@@ -1,0 +1,18 @@
+Add the following keys to your app target's Info.plist with non-empty strings:
+
+- NSCameraUsageDescription
+  Value: "This app uses the camera to capture wound images and enable AR measurement."
+
+- NSPhotoLibraryAddUsageDescription
+  Value: "This app saves snapshots to your photo library."
+
+- NSPhotoLibraryUsageDescription
+  Value: "This app needs access to your photo library to save and access snapshots."
+
+- NSMicrophoneUsageDescription
+  Value: "Microphone access may be used when recording videos or for future features."
+
+- NSLocationWhenInUseUsageDescription
+  Value: "Location may be used to tag measurements with context (optional)."
+
+Note: UIRequiresFullScreen is deprecated in iOS 26.0 and can be removed from the Info.plist if present.
