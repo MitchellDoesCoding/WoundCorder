@@ -221,6 +221,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     
     // Vision / Core ML segmentation scaffolding
     private var segmentationRequest: VNCoreMLRequest?
+    private let woundSegmenter = WoundMultimodalSegmenter()
     private var lastSegmentationTime: TimeInterval = 0
     private var segmentationInterval: TimeInterval = 1.0 // seconds
     private var isRunningSegmentation = false
@@ -362,6 +363,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         let areaCM2: Float
         let volumeCM3: Float
         let confidence: MeasurementState.Confidence
+        let usesSegmentation: Bool
     }
     
     private func validateContourForVolume(_ pts: [SIMD3<Float>]) -> Bool {
@@ -1574,7 +1576,9 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             publishMetrics(
                 perimeter: estimate.perimeterCM,
                 area: estimate.areaCM2,
-                volume: estimate.volumeCM3
+                volume: estimate.volumeCM3,
+                segmentationApplied: estimate.usesSegmentation,
+                volumeSource: estimate.usesSegmentation ? "Segmentation + LiDAR mesh/depth" : "LiDAR mesh/depth estimate"
             )
             onMeasurementState?(MeasurementState(
                 area: estimate.areaCM2,
@@ -2077,6 +2081,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         latestWoundSegmentationScreenPolygon.removeAll()
         latestWoundSegmentationWorldPolygon.removeAll()
         latestWoundSegmentationUpdatedAt = 0
+        woundSegmenter.resetTemporalState()
     }
 
     private func freshSegmentationScreenPolygon(maxAge: TimeInterval = 14.0) -> [CGPoint]? {
@@ -2260,7 +2265,8 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             perimeterCM: max(0, perimeterCM),
             areaCM2: max(0, areaCM2),
             volumeCM3: max(0, volumeCM3),
-            confidence: confidence
+            confidence: confidence,
+            usesSegmentation: true
         )
     }
 
@@ -2493,7 +2499,8 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             perimeterCM: max(0, perimeterCM),
             areaCM2: max(0, areaCM2),
             volumeCM3: max(0, volumeCM3),
-            confidence: confidence
+            confidence: confidence,
+            usesSegmentation: false
         )
     }
 
@@ -2660,21 +2667,31 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         progress: Double,
         isScanning: Bool,
         message: String,
-        quality: String? = nil
+        quality: String? = nil,
+        segmentationApplied: Bool? = nil,
+        volumeSource: String? = nil
     ) {
         let stats = scanSurfaceStats()
+        var userInfo: [String: Any] = [
+            "progress": progress,
+            "isScanning": isScanning,
+            "message": message,
+            "quality": quality ?? "scanning",
+            "anchorCount": stats.anchorCount,
+            "vertexCount": stats.vertexCount,
+            "faceCount": stats.faceCount
+        ]
+        if let segmentationApplied {
+            userInfo["segmentationApplied"] = segmentationApplied
+        }
+        if let volumeSource {
+            userInfo["volumeSource"] = volumeSource
+        }
+
         NotificationCenter.default.post(
             name: NSNotification.Name("LiDARScanStatusDidUpdate"),
             object: nil,
-            userInfo: [
-                "progress": progress,
-                "isScanning": isScanning,
-                "message": message,
-                "quality": quality ?? "scanning",
-                "anchorCount": stats.anchorCount,
-                "vertexCount": stats.vertexCount,
-                "faceCount": stats.faceCount
-            ]
+            userInfo: userInfo
         )
     }
 
@@ -2890,7 +2907,9 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
                 publishMetrics(
                     perimeter: guidedEstimate.perimeterCM,
                     area: guidedEstimate.areaCM2,
-                    volume: guidedEstimate.volumeCM3
+                    volume: guidedEstimate.volumeCM3,
+                    segmentationApplied: true,
+                    volumeSource: "Segmentation + LiDAR mesh/depth"
                 )
                 onMeasurementState?(MeasurementState(
                     area: guidedEstimate.areaCM2,
@@ -3027,19 +3046,33 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         showHUDPrompt("Final wound volume locked")
     }
 
-    private func publishMetrics(perimeter: Float, area: Float, volume: Float) {
+    private func publishMetrics(
+        perimeter: Float,
+        area: Float,
+        volume: Float,
+        segmentationApplied: Bool? = nil,
+        volumeSource: String? = nil
+    ) {
         lastComputedArea = area
         lastComputedVolume = volume
         onMetricsCalculated?(perimeter, area, volume)
 
+        var userInfo: [String: Any] = [
+            "perimeter": perimeter,
+            "area": area,
+            "volume": volume
+        ]
+        if let segmentationApplied {
+            userInfo["segmentationApplied"] = segmentationApplied
+        }
+        if let volumeSource {
+            userInfo["volumeSource"] = volumeSource
+        }
+
         NotificationCenter.default.post(
             name: NSNotification.Name("MetricsUpdated"),
             object: nil,
-            userInfo: [
-                "perimeter": perimeter,
-                "area": area,
-                "volume": volume
-            ]
+            userInfo: userInfo
         )
     }
     
@@ -4604,7 +4637,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             if refinePassesRemaining > 0 || !isRefiningWound {
                 if now - lastSegmentationTime > segmentationInterval {
                     lastSegmentationTime = now
-                    runSegmentation(on: pixelBuffer)
+                    runSegmentation(on: frame)
                     if isRefiningWound { refinePassesRemaining = max(0, refinePassesRemaining - 1) }
                 }
             }
@@ -4638,13 +4671,44 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         segmentationRequest = request
     }
     
-    private func runSegmentation(on pixelBuffer: CVPixelBuffer) {
-        guard isAutoSegmentationEnabled, let request = segmentationRequest else { return }
+    private func runSegmentation(on frame: ARFrame) {
+        guard isAutoSegmentationEnabled else { return }
         if isRunningSegmentation { return }
         isRunningSegmentation = true
-        
+
+        let viewportSize = sceneView.bounds.size
+        let iface: UIInterfaceOrientation = {
+            if let ws = self.view.window?.windowScene {
+                if #available(iOS 18.0, *) { return ws.effectiveGeometry.interfaceOrientation }
+                else { return ws.interfaceOrientation }
+            }
+            return .portrait
+        }()
+
         segmentationQueue.async { [weak self] in
             guard let self = self else { return }
+            if let result = self.woundSegmenter.segment(
+                frame: frame,
+                viewportSize: viewportSize,
+                orientation: iface
+            ) {
+                DispatchQueue.main.async {
+                    self.applyMultimodalSegmentation(result)
+                }
+                return
+            }
+
+            guard let request = self.segmentationRequest else {
+                DispatchQueue.main.async {
+                    self.isRunningSegmentation = false
+                    if self.isVolumetricLiDARScanning {
+                        self.showHUDPrompt("Keep the wound centered and move slowly for better depth.")
+                    }
+                }
+                return
+            }
+
+            let pixelBuffer = frame.capturedImage
             let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
             let targetWidth: CGFloat = 320
             let scale = targetWidth / max(1, ciImage.extent.width)
@@ -4654,13 +4718,6 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
                 DispatchQueue.main.async { self.isRunningSegmentation = false }
                 return
             }
-            let iface: UIInterfaceOrientation = {
-                if let ws = self.view.window?.windowScene {
-                    if #available(iOS 18.0, *) { return ws.effectiveGeometry.interfaceOrientation }
-                    else { return ws.interfaceOrientation }
-                }
-                return .portrait
-            }()
             let cgOrientation = iface.toCGImagePropertyOrientationForBackCamera()
             let handler = VNImageRequestHandler(cgImage: cgScaled, orientation: cgOrientation, options: [:])
             do {
@@ -4672,6 +4729,135 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
                 DispatchQueue.main.async { self.isRunningSegmentation = false }
             }
         }
+    }
+
+    private func applyMultimodalSegmentation(_ result: WoundSegmentationResult) {
+        defer { isRunningSegmentation = false }
+        guard !isScanLocked else { return }
+
+        let screenPolygon = result.geometry.boundaryScreenPoints
+        var worldPolygon = result.geometry.boundaryWorldPoints
+        guard screenPolygon.count >= 3, validateContourForVolume(worldPolygon) else { return }
+
+        worldPolygon = smoothClosedLoop(worldPolygon, passes: 1)
+        guard validateContourForVolume(worldPolygon) else { return }
+
+        let centroid2D: CGPoint = {
+            var sx: CGFloat = 0
+            var sy: CGFloat = 0
+            for point in screenPolygon {
+                sx += point.x
+                sy += point.y
+            }
+            let count = CGFloat(max(1, screenPolygon.count))
+            return CGPoint(x: sx / count, y: sy / count)
+        }()
+
+        if let last = lastSegmentationCentroid {
+            let distance = hypot(centroid2D.x - last.x, centroid2D.y - last.y)
+            let threshold: CGFloat = isRefiningWound ? 11.0 : 16.0
+            if distance < threshold {
+                stablePolygonCount += 1
+            } else {
+                stablePolygonCount = 0
+            }
+        } else {
+            stablePolygonCount = requiredStableChecks
+        }
+        lastSegmentationCentroid = centroid2D
+        lastSegmentationScreenSample = screenPolygon
+
+        let shouldApply = currentUserPoints().count < 3 || stablePolygonCount >= requiredStableChecks || !isRefiningWound
+        guard shouldApply else { return }
+
+        if isApplyingSegmentationResult { return }
+        isApplyingSegmentationResult = true
+        defer { isApplyingSegmentationResult = false }
+
+        rememberWoundSegmentation(screenPolygon: screenPolygon, worldPolygon: worldPolygon)
+
+        let phase: OutlinePhase = (outlinePhase.wrappedValue == .none) ? .top : outlinePhase.wrappedValue
+        switch phase {
+        case .top:
+            topOutlinePoints.wrappedValue = worldPolygon
+        case .bottom:
+            bottomOutlinePoints.wrappedValue = worldPolygon
+        case .done, .none:
+            break
+        }
+
+        if let deepest = result.geometry.deepestWorldPoint {
+            selectedDepthPoint = deepest
+        } else if let deep = deepestPointInROI(boundary: worldPolygon) {
+            selectedDepthPoint = deep
+        } else {
+            selectedDepthPoint = centroid(of: worldPolygon)
+        }
+
+        updateDepthPointNode()
+        updateDepthIndicatorLine()
+        updateFilledPolygon()
+
+        let area = result.areaCm2.isFinite ? max(0, result.areaCm2) : 0
+        let volume = validateAndConvertVolume(result.volumeCm3) ?? 0
+        let perimeter = result.perimeter.isFinite ? max(0, result.perimeter) : 0
+        let confidence = measurementConfidence(from: result)
+        let preliminary = confidence != .high || result.geometry.validDepthPixelCount < 120
+
+        publishMetrics(
+            perimeter: perimeter,
+            area: area,
+            volume: volume,
+            segmentationApplied: true,
+            volumeSource: "Segmentation + LiDAR scene depth"
+        )
+        onMeasurementState?(MeasurementState(
+            area: area > 0 ? area : nil,
+            volume: volume > 0 ? volume : nil,
+            isPreliminary: preliminary,
+            confidence: confidence
+        ))
+        updateMetricsTextNode(
+            perimeter: perimeter > 0 ? perimeter : nil,
+            area: area > 0 ? area : nil,
+            volume: volume > 0 ? volume : nil
+        )
+
+        let sourceText = "Segmentation + LiDAR scene depth"
+        let progress: Double = isVolumetricLiDARScanning
+            ? min(max((CACurrentMediaTime() - volumetricScanStartedAt) / volumetricScanDuration, 0), 1)
+            : 0
+        postVolumetricScanStatus(
+            progress: progress,
+            isScanning: isVolumetricLiDARScanning,
+            message: volume > 0 ? "Wound mask is driving LiDAR volume." : "Wound mask found. Keep scanning for stronger volume.",
+            quality: confidence == .high ? "high" : confidence == .medium ? "medium" : "low",
+            segmentationApplied: true,
+            volumeSource: sourceText
+        )
+
+        if result.confidence >= 0.78, volume > 0 {
+            showHUDPrompt("LiDAR segmentation measurement ready", duration: 1.0)
+        } else if isVolumetricLiDARScanning {
+            showHUDPrompt("Keep moving slowly to improve wound volume.", duration: 1.0)
+        }
+
+        if area > 0 || volume > 0 {
+            autoSaveScanIfNeeded()
+        }
+    }
+
+    private func measurementConfidence(from result: WoundSegmentationResult) -> MeasurementState.Confidence {
+        if result.confidence >= 0.80,
+           result.geometry.sampledPointCount >= 120,
+           result.geometry.validDepthPixelCount >= 180 {
+            return .high
+        }
+        if result.confidence >= 0.58,
+           result.geometry.validDepthPixelCount >= 40 {
+            return .medium
+        }
+        return .low
     }
     
     private func processSegmentationMask(_ mask: CVPixelBuffer) {

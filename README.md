@@ -1,172 +1,229 @@
-# Capturing depth using the LiDAR camera
-Access the LiDAR camera on supporting devices to capture precise depth data.
+# WoundCorder
 
-## Overview
-AVFoundation introduced depth data capture for photos and video in iOS 11. The data it provides is suitable for many apps, but may not meet the needs of those that require greater precision depth. Starting in iOS 15.4, you can access the LiDAR camera on supported hardware, which offers high-precision depth data suitable for use cases like room scanning and measurement.
+**WoundCorder** is an iOS-based wound documentation and measurement platform designed to make wound assessment more objective, repeatable, and practical outside specialty care.
 
-This sample code project shows how to capture and render depth data from the LiDAR camera. It starts in streaming mode, which demonstrates how to capture synchronized video and depth data. When you tap the Camera button in the upper-left corner of the screen, the app switches to photo mode, which illustrates how to capture photos with depth data. In both modes, the app provides several Metal-based visualizations of the depth and image data.
+Current wound documentation often depends on subjective visual judgment, manual ruler measurements, and inconsistent clinical notes. This creates problems when wounds are monitored over time, especially in home health, skilled nursing facilities, primary care, and other settings where specialty wound care may not be immediately available.
 
-## Configure the sample code project
-Run this sample code on a device that provides a LiDAR camera, such as:
-- iPhone 12 Pro or later
-- iPad Pro 11-inch (3rd generation) or later
-- iPad Pro 12.9-inch (5th generation) or later
+WoundCorder combines **LiDAR-based 3D wound measurement**, **image-based wound documentation**, and **AI-assisted analysis** to help standardize wound tracking while keeping the workflow simple enough for real-world use.
 
-## Configure the LiDAR camera
-The sample app’s `CameraController` class provides the code that configures and manages the capture session, and handles the delivery of new video and depth data. It begins its configuration by retrieving the LiDAR camera. It calls the capture device’s [default(\_:for:position:)][1] class method, passing it the new [.builtInLiDARDepthCamera][2] device type available in iOS 15.4 and later.
+---
 
-``` swift
-// Look up the LiDAR camera.
-guard let device = AVCaptureDevice.default(.builtInLiDARDepthCamera, for: .video, position: .back) else {
-    throw ConfigurationError.lidarDeviceUnavailable
-}
-```
+## Problem
 
-After retrieving the device, the app configures it with a specific video and depth format. It asks the device for its supported formats and finds the best nonbinned, full-range YUV color format that matches the sample app's preferred width and supports depth capture. Finally, it sets the active formats on the device as in the following code example:
+Chronic wounds are difficult to manage because clinicians need to know whether a wound is truly improving, worsening, or staying the same. Traditional wound measurement methods usually rely on:
 
-``` swift
-// Find a match that outputs video data in the format the app's custom Metal views require.
-guard let format = (device.formats.last { format in
-    format.formatDescription.dimensions.width == preferredWidthResolution &&
-    format.formatDescription.mediaSubType.rawValue == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange &&
-    !format.isVideoBinned &&
-    !format.supportedDepthDataFormats.isEmpty
-}) else {
-    throw ConfigurationError.requiredFormatUnavailable
-}
+- Manual length and width measurements
+- Visual estimates of depth and tissue type
+- Inconsistent photo documentation
+- Subjective descriptions in clinical notes
 
-// Find a match that outputs depth data in the format the app's custom Metal views require.
-guard let depthFormat = (format.supportedDepthDataFormats.last { depthFormat in
-    depthFormat.formatDescription.mediaSubType.rawValue == kCVPixelFormatType_DepthFloat16
-}) else {
-    throw ConfigurationError.requiredFormatUnavailable
-}
+These methods can miss important changes in wound volume, depth, surface area, and appearance. Small documentation errors can also become clinically important when care decisions depend on whether a wound is healing.
 
-// Begin the device configuration.
-try device.lockForConfiguration()
+The core problem is not just taking wound photos.  
+The core problem is turning those photos into reliable, repeatable clinical information.
 
-// Configure the device and depth formats.
-device.activeFormat = format
-device.activeDepthDataFormat = depthFormat
+---
 
-// Finish the device configuration.
-device.unlockForConfiguration()
-```
+## Project Overview
 
-## Configure the capture outputs
-The app operates in streaming or photo mode. To enable streaming output, it creates an instance of [AVCaptureVideoDataOutput][3] and [AVCaptureDepthDataOutput][4] to capture video sample buffers and depth data, respectively. It configures them as follows:
+WoundCorder is built as a mobile-first wound assessment tool that uses the hardware already available on modern iPhones and iPads.
 
-``` swift
-// Create an object to output video sample buffers.
-videoDataOutput = AVCaptureVideoDataOutput()
-captureSession.addOutput(videoDataOutput)
+The app is designed to support:
 
-// Create an object to output depth data.
-depthDataOutput = AVCaptureDepthDataOutput()
-depthDataOutput.isFilteringEnabled = isFilteringEnabled
-captureSession.addOutput(depthDataOutput)
+- 3D wound measurement using Apple LiDAR
+- Area, perimeter, and volume estimation
+- Structured wound image capture
+- AI-assisted wound characterization
+- On-device or privacy-preserving analysis workflows
+- Longitudinal wound tracking over time
 
-// Create an object to synchronize the delivery of depth and video data.
-outputVideoSync = AVCaptureDataOutputSynchronizer(dataOutputs: [depthDataOutput, videoDataOutput])
-outputVideoSync.setDelegate(self, queue: videoQueue)
-```
+The goal is not to replace clinicians. The goal is to give clinicians better measurement data and more consistent documentation.
 
-Because the video and depth data stream from separate output objects, the sample uses an [AVCaptureDataOutputSynchronizer][5] to synchronize the delivery from both outputs to a single callback. The `CameraController` class adopts the synchronizer’s [AVCaptureDataOutputSynchronizerDelegate][6] protocol and responds to the delivery of new video and depth data.
+---
 
-To handle photo capture, the app also creates an instance of [AVCapturePhotoOutput][7]. It optimizes the output for high-quality capture and adds the output to the capture session.
+## Key Features
 
-``` swift
-// Create an object to output photos.
-photoOutput = AVCapturePhotoOutput()
-photoOutput.maxPhotoQualityPrioritization = .quality
-captureSession.addOutput(photoOutput)
+### LiDAR-Based Wound Measurement
 
-// Enable delivery of depth data after adding the output to the capture session.
-photoOutput.isDepthDataDeliveryEnabled = true
-```
+WoundCorder uses Apple’s ARKit and LiDAR capabilities to estimate wound geometry in three dimensions.
 
-After it adds the output to the session, it enables the delivery of depth data, which configures the capture pipeline appropriately. It can only enable depth delivery after adding the output to the capture session because the output needs to determine whether the pipeline configuration can deliver it.
+Planned and implemented measurement features include:
 
-## Capture synchronized video and depth
-After configuring the capture session’s inputs and outputs as required, the app is ready to start capturing data. The app starts in streaming mode, which uses the video data and depth data outputs and an `AVCaptureDataOutputSynchronizer` to synchronize the delivery of their data. The app adopts the synchronizer’s delegate protocol and implements its [dataOutputSynchronizer(\_:didOutput:)][8] method to handle the delivery, as the following example shows:
+- Wound surface area
+- Wound perimeter
+- Depth-point selection
+- Approximate wound volume
+- 3D mesh visualization
+- Manual boundary correction
+- Exportable measurement data
 
-``` swift
-func dataOutputSynchronizer(_ synchronizer: AVCaptureDataOutputSynchronizer,
-                            didOutput synchronizedDataCollection: AVCaptureSynchronizedDataCollection) {
-    // Retrieve the synchronized depth and sample buffer container objects.
-    guard let syncedDepthData = synchronizedDataCollection.synchronizedData(for: depthDataOutput) as? AVCaptureSynchronizedDepthData,
-          let syncedVideoData = synchronizedDataCollection.synchronizedData(for: videoDataOutput) as? AVCaptureSynchronizedSampleBufferData else { return }
-    
-    guard let pixelBuffer = syncedVideoData.sampleBuffer.imageBuffer,
-          let cameraCalibrationData = syncedDepthData.depthData.cameraCalibrationData else { return }
-    
-    // Package the captured data.
-    let data = CameraCapturedData(depth: syncedDepthData.depthData.depthDataMap.texture(withFormat: .r16Float, planeIndex: 0, addToCache: textureCache),
-                                  colorY: pixelBuffer.texture(withFormat: .r8Unorm, planeIndex: 0, addToCache: textureCache),
-                                  colorCbCr: pixelBuffer.texture(withFormat: .rg8Unorm, planeIndex: 1, addToCache: textureCache),
-                                  cameraIntrinsics: cameraCalibrationData.intrinsicMatrix,
-                                  cameraReferenceDimensions: cameraCalibrationData.intrinsicMatrixReferenceDimensions)
-    
-    delegate?.onNewData(capturedData: data)
-}
-```
+### Image-Based Documentation
 
-The app retrieves the container objects that store the synchronized data from the [AVCaptureSynchronizedDataCollection][9]. It then unwraps the underlying video pixel buffer and depth data, and packages them for the app's Metal views to display.
+The app supports wound image capture and structured visual documentation so wounds can be compared over time.
 
-## Capture photos and depth
-When you tap the app’s Camera button in the upper-left corner of the user interface, the app switches to photo mode. When this occurs, the app calls its `capturePhoto()` method, which creates a photo settings object, requests depth delivery on it, and initiates a photo capture.
+Potential documentation fields include:
 
-``` swift
-func capturePhoto() {
-    var photoSettings: AVCapturePhotoSettings
-    if  photoOutput.availablePhotoPixelFormatTypes.contains(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) {
-        photoSettings = AVCapturePhotoSettings(format: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-        ])
-    } else {
-        photoSettings = AVCapturePhotoSettings()
-    }
-    
-    // Capture depth data with this photo capture.
-    photoSettings.isDepthDataDeliveryEnabled = true
-    photoOutput.capturePhoto(with: photoSettings, delegate: self)
-}
-```
+- Wound location
+- Wound size
+- Wound depth
+- Drainage appearance
+- Tissue type
+- Surrounding skin changes
+- Signs of possible infection or deterioration
 
-When the framework finishes the photo capture, it calls the photo output’s delegate method and passes it the [AVCapturePhoto][10] object that contains the image and depth data. The sample retrieves the data from the photo, stops the stream until the user returns to streaming mode, and, similarly to the video case, packages the captured data for delivery to the app’s user interface layer.
+### AI-Assisted Analysis
 
-``` swift
-func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-    
-    // Retrieve the image and depth data.
-    guard let pixelBuffer = photo.pixelBuffer,
-          let depthData = photo.depthData,
-          let cameraCalibrationData = depthData.cameraCalibrationData else { return }
-    
-    // Stop the stream until the user returns to streaming mode.
-    stopStream()
-    
-    // Convert the depth data to the expected format.
-    let convertedDepth = depthData.converting(toDepthDataType: kCVPixelFormatType_DepthFloat16)
-    
-    // Package the captured data.
-    let data = CameraCapturedData(depth: convertedDepth.depthDataMap.texture(withFormat: .r16Float, planeIndex: 0, addToCache: textureCache),
-                                  colorY: pixelBuffer.texture(withFormat: .r8Unorm, planeIndex: 0, addToCache: textureCache),
-                                  colorCbCr: pixelBuffer.texture(withFormat: .rg8Unorm, planeIndex: 1, addToCache: textureCache),
-                                  cameraIntrinsics: cameraCalibrationData.intrinsicMatrix,
-                                  cameraReferenceDimensions: cameraCalibrationData.intrinsicMatrixReferenceDimensions)
-    
-    delegate?.onNewPhotoData(capturedData: data)
-}
-```
+WoundCorder explores the use of vision-language models and wound-specific AI tools to assist with structured wound documentation.
 
-[1]:	https://developer.apple.com/documentation/avfoundation/avcapturedevice/2361508-default
-[2]:	https://developer.apple.com/documentation/avfoundation/avcapturedevice/devicetype/3915812-builtinlidardepthcamera
-[3]:	https://developer.apple.com/documentation/avfoundation/avcapturevideodataoutput
-[4]:	https://developer.apple.com/documentation/avfoundation/avcapturedepthdataoutput
-[5]:	https://developer.apple.com/documentation/avfoundation/avcapturedataoutputsynchronizer
-[6]:	https://developer.apple.com/documentation/avfoundation/avcapturedataoutputsynchronizerdelegate
-[7]:	https://developer.apple.com/documentation/avfoundation/avcapturephotooutput
-[8]:	https://developer.apple.com/documentation/avfoundation/avcapturedataoutputsynchronizerdelegate/2873976-dataoutputsynchronizer
-[9]:	https://developer.apple.com/documentation/avfoundation/avcapturesynchronizeddatacollection
-[10]:	https://developer.apple.com/documentation/avfoundation/avcapturephoto
+The AI layer is intended to support internal review and clinician-facing workflows, not provide unsupervised diagnosis or treatment recommendations.
+
+Potential AI outputs include:
+
+- Structured wound description
+- Measurement summary
+- Documentation quality check
+- Change-over-time summary
+- Referral or eConsult support
+
+---
+
+## Technical Stack
+
+### Mobile App
+
+- Swift
+- SwiftUI / UIKit
+- ARKit
+- RealityKit / SceneKit
+- Vision framework
+- Core ML
+- LiDAR depth sensing
+
+### Backend / API
+
+- Node.js
+- Express
+- REST API endpoints for wound image analysis
+- Optional external AI model integration
+
+### Machine Learning / Computer Vision
+
+- Wound segmentation
+- Image preprocessing
+- Boundary detection
+- Vision-language model prompting
+- Structured JSON output for wound documentation
+
+---
+
+## Current Development Status
+
+WoundCorder is an active prototype. Current work focuses on improving:
+
+- Measurement accuracy
+- Wound boundary detection
+- Depth and volume estimation
+- User interface flow
+- AI-assisted wound documentation
+- Clinical safety and reliability
+
+Earlier versions showed promising area measurement performance, but further validation is still needed before clinical deployment.
+
+---
+
+## Example Workflow
+
+1. Open the WoundCorder app.
+2. Position the device over the wound.
+3. Capture a wound image and LiDAR scan.
+4. Mark or refine the wound boundary.
+5. Select a depth reference point if needed.
+6. Generate wound measurements.
+7. Review structured wound documentation.
+8. Save or export the wound record for follow-up.
+
+---
+
+## Clinical Use Case
+
+WoundCorder is designed for settings where wound monitoring needs to be more consistent and scalable, including:
+
+- Home health
+- Skilled nursing facilities
+- Primary care
+- Wound care clinics
+- Remote patient monitoring
+- eConsult workflows
+- Care coordination between providers
+
+The app is especially relevant for chronic wounds where tracking healing over time is critical.
+
+---
+
+## Safety and Limitations
+
+WoundCorder is a prototype and is not currently intended to replace clinical judgment.
+
+Important limitations include:
+
+- Measurement accuracy depends on image quality, lighting, scan angle, and device positioning.
+- AI-generated wound descriptions may contain errors and require clinician review.
+- The app should not be used as a standalone diagnostic tool.
+- Clinical validation is required before use in medical decision-making.
+- Wound infection, ischemia, necrosis, or deterioration should be assessed by qualified clinicians.
+
+---
+
+## Research Direction
+
+This project is also connected to broader research questions in medical AI and physical-world computer vision, including:
+
+- How reliably can AI models interpret surface medical photographs?
+- Can mobile depth sensing improve wound measurement compared with 2D images?
+- How should wound images be standardized for AI-assisted documentation?
+- What failure modes occur when vision-language models analyze clinical images?
+- How can AI tools support clinicians without creating unsafe automation?
+
+---
+
+## Roadmap
+
+Planned development areas include:
+
+- Improved wound segmentation
+- More robust LiDAR mesh processing
+- Calibration marker support
+- Longitudinal wound tracking dashboard
+- Structured PDF wound reports
+- On-device model optimization
+- eConsult integration
+- Clinical validation dataset
+- Privacy-preserving analysis pipeline
+
+---
+
+## Repository Structure
+
+```text
+WoundCorder/
+├── iOS-App/
+│   ├── ARKit measurement views
+│   ├── wound boundary tools
+│   ├── LiDAR mesh processing
+│   └── image capture workflow
+│
+├── Backend/
+│   ├── Express API server
+│   ├── image upload endpoint
+│   └── AI analysis endpoint
+│
+├── Models/
+│   ├── wound segmentation models
+│   └── model configuration files
+│
+├── Docs/
+│   ├── clinical workflow notes
+│   ├── measurement validation notes
+│   └── safety documentation
+│
+└── README.md

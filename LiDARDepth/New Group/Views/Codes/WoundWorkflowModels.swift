@@ -3,15 +3,40 @@ import Foundation
 import SwiftUI
 
 enum WoundAppMode: String, CaseIterable, Identifiable {
-    case publicPatient = "Public"
+    case publicPatient = "Consumer"
     case professional = "Pro"
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .publicPatient: return "Patient"
+        case .publicPatient: return "Consumer"
         case .professional: return "Professional"
+        }
+    }
+}
+
+enum HomeAppearanceMode: String, CaseIterable, Identifiable {
+    case light = "Light"
+    case dark = "Dark"
+
+    var id: String { rawValue }
+
+    var colorScheme: ColorScheme {
+        switch self {
+        case .light:
+            return .light
+        case .dark:
+            return .dark
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .light:
+            return "sun.max.fill"
+        case .dark:
+            return "moon.fill"
         }
     }
 }
@@ -84,7 +109,6 @@ struct PatientProfile: Equatable {
     var height: String = ""
     var weight: String = ""
     var gender: PatientGender = .other
-    var monkSkinTone: Int = 5
     var age: String = ""
 
     var displayName: String {
@@ -114,21 +138,6 @@ enum WoundSeverityScorer {
         guard area > 0, volume > 0 else { return 0 }
         return volume / area
     }
-}
-
-enum MonkSkinTonePalette {
-    static let colors: [Color] = [
-        Color(red: 0.96, green: 0.82, blue: 0.68),
-        Color(red: 0.91, green: 0.72, blue: 0.54),
-        Color(red: 0.84, green: 0.62, blue: 0.43),
-        Color(red: 0.76, green: 0.52, blue: 0.35),
-        Color(red: 0.67, green: 0.43, blue: 0.28),
-        Color(red: 0.57, green: 0.35, blue: 0.22),
-        Color(red: 0.47, green: 0.28, blue: 0.18),
-        Color(red: 0.36, green: 0.21, blue: 0.14),
-        Color(red: 0.25, green: 0.15, blue: 0.10),
-        Color(red: 0.15, green: 0.09, blue: 0.06)
-    ]
 }
 
 @MainActor

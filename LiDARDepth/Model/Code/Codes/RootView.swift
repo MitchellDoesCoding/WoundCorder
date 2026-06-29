@@ -12,6 +12,7 @@ struct RootView: View {
 
     @AppStorage("hasCompletedWelcomeConsent") private var hasCompletedWelcomeConsent = false
     @AppStorage("researchUsageConsent") private var researchUsageConsent = false
+    @AppStorage("homeAppearanceMode") private var homeAppearanceRaw = HomeAppearanceMode.light.rawValue
 
     @State private var selectedMode: WoundAppMode = .publicPatient
     @State private var patientProfile = PatientProfile()
@@ -52,7 +53,7 @@ struct RootView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 18)
                 }
-                .background(Color(.systemGroupedBackground))
+                .background(HomeFlowBackground(mode: selectedMode))
                 .navigationTitle(screen == .home ? "Woundcorder" : "New Wound")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -80,6 +81,7 @@ struct RootView: View {
                     }
                 }
             }
+            .preferredColorScheme(homeAppearance.colorScheme)
 
             if !hasCompletedWelcomeConsent {
                 ConsentWelcomeView(
@@ -115,6 +117,17 @@ struct RootView: View {
         }
     }
 
+    private var homeAppearance: HomeAppearanceMode {
+        HomeAppearanceMode(rawValue: homeAppearanceRaw) ?? .light
+    }
+
+    private var homeAppearanceBinding: Binding<HomeAppearanceMode> {
+        Binding(
+            get: { homeAppearance },
+            set: { homeAppearanceRaw = $0.rawValue }
+        )
+    }
+
     @ViewBuilder
     private var rootContent: some View {
         switch screen {
@@ -122,6 +135,7 @@ struct RootView: View {
             WoundHomeView(
                 logoImage: logoImage(),
                 mode: $selectedMode,
+                appearance: homeAppearanceBinding,
                 items: logManager.items,
                 patientCount: patientCount,
                 severeCount: severeCount,
@@ -219,6 +233,7 @@ struct RootView: View {
 private struct WoundHomeView: View {
     let logoImage: Image?
     @Binding var mode: WoundAppMode
+    @Binding var appearance: HomeAppearanceMode
     let items: [SavedMeasurement]
     let patientCount: Int
     let severeCount: Int
@@ -228,15 +243,24 @@ private struct WoundHomeView: View {
     let onViewLogs: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 20) {
             HomeHeader(
                 logoImage: logoImage,
                 mode: mode,
+                appearance: $appearance,
                 woundCount: items.count,
-                severeCount: severeCount
+                patientCount: patientCount,
+                severeCount: severeCount,
+                needsReviewCount: needsReviewCount
             )
 
-            HomeModePicker(mode: $mode)
+            HomeModeWorkspaceSelector(
+                mode: $mode,
+                woundCount: items.count,
+                patientCount: patientCount,
+                severeCount: severeCount,
+                needsReviewCount: needsReviewCount
+            )
 
             if mode == .publicPatient {
                 PatientHomeOverview(
@@ -260,57 +284,256 @@ private struct WoundHomeView: View {
     }
 }
 
-private struct HomeHeader: View {
-    let logoImage: Image?
+private struct HomeFlowBackground: View {
     let mode: WoundAppMode
-    let woundCount: Int
-    let severeCount: Int
 
     var body: some View {
-        HStack(spacing: 14) {
-            if let logoImage {
-                logoImage
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 48, height: 48)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            } else {
-                Image(systemName: "viewfinder.circle")
-                    .font(.system(size: 38))
-                    .foregroundStyle(.blue)
-            }
+        ZStack {
+            Color(.systemGroupedBackground)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(mode == .professional ? "Clinical wound dashboard" : "Your wound dashboard")
-                    .font(.title3.weight(.bold))
-                Text("\(woundCount) saved wounds • \(severeCount) severe")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                (mode == .professional ? Color.indigo.opacity(0.10) : Color.teal.opacity(0.10))
+                    .frame(height: 260)
+                Color.clear
             }
-
-            Spacer()
+            .ignoresSafeArea()
         }
-        .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
-private struct HomeModePicker: View {
-    @Binding var mode: WoundAppMode
+private struct HomeHeader: View {
+    let logoImage: Image?
+    let mode: WoundAppMode
+    @Binding var appearance: HomeAppearanceMode
+    let woundCount: Int
+    let patientCount: Int
+    let severeCount: Int
+    let needsReviewCount: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("Mode", selection: $mode) {
-                ForEach(WoundAppMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 14) {
+                if let logoImage {
+                    logoImage
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 52, height: 52)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                } else {
+                    Image(systemName: "viewfinder.circle")
+                        .font(.system(size: 40))
+                        .foregroundStyle(modeAccent)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(mode == .professional ? "Professional Command Center" : "Consumer Healing Hub")
+                        .font(.title2.weight(.bold))
+                    Text(mode == .professional ? "Population queue, severe cases, and review workflow." : "Personal wound history, medicines, and guided scans.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                HomeAppearanceControl(selection: $appearance)
+            }
+
+            HStack(spacing: 10) {
+                HeaderMetric(title: mode == .professional ? "Patients" : "Wounds", value: "\(mode == .professional ? patientCount : woundCount)", color: modeAccent)
+                HeaderMetric(title: mode == .professional ? "Needs Review" : "Severe", value: "\(mode == .professional ? needsReviewCount : severeCount)", color: mode == .professional ? .orange : .red)
+                HeaderMetric(title: "Mode", value: mode == .professional ? "Pro" : "Consumer", color: mode == .professional ? .indigo : .teal)
+            }
+        }
+        .padding(16)
+        .background(headerBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(modeAccent.opacity(0.26), lineWidth: 1)
+        }
+    }
+
+    private var modeAccent: Color {
+        mode == .professional ? .indigo : .teal
+    }
+
+    private var headerBackground: Color {
+        mode == .professional
+            ? Color.indigo.opacity(0.10)
+            : Color.teal.opacity(0.11)
+    }
+}
+
+private struct HomeAppearanceControl: View {
+    @Binding var selection: HomeAppearanceMode
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(HomeAppearanceMode.allCases) { option in
+                Button {
+                    selection = option
+                } label: {
+                    Image(systemName: option.systemImage)
+                        .font(.subheadline.weight(.bold))
+                        .frame(width: 34, height: 34)
+                        .background(selection == option ? Color.primary.opacity(0.12) : Color.clear, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.rawValue)
+            }
+        }
+        .padding(4)
+        .background(Color(.secondarySystemGroupedBackground).opacity(0.82), in: Capsule())
+    }
+}
+
+private struct HeaderMetric: View {
+    let title: String
+    let value: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+    }
+}
+
+private struct HomeModeWorkspaceSelector: View {
+    @Binding var mode: WoundAppMode
+    let woundCount: Int
+    let patientCount: Int
+    let severeCount: Int
+    let needsReviewCount: Int
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 280), spacing: 12)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 12) {
+            ModeTrackCard(
+                title: "Consumer",
+                subtitle: "Personal healing tracker",
+                detail: "Guided scans, medicine notes, image AI, and simple progress history.",
+                systemImage: "person.crop.circle.badge.checkmark",
+                accent: .teal,
+                statTitle: "Saved wounds",
+                statValue: "\(woundCount)",
+                secondaryStatTitle: "Severe",
+                secondaryStatValue: "\(severeCount)",
+                isSelected: mode == .publicPatient
+            ) {
+                mode = .publicPatient
+            }
+
+            ModeTrackCard(
+                title: "Pro",
+                subtitle: "Clinical review workspace",
+                detail: "Patient census, severe cases, review queue, and provider handoff.",
+                systemImage: "stethoscope.circle.fill",
+                accent: .indigo,
+                statTitle: "Patients",
+                statValue: "\(patientCount)",
+                secondaryStatTitle: "Review",
+                secondaryStatValue: "\(needsReviewCount)",
+                isSelected: mode == .professional
+            ) {
+                mode = .professional
+            }
+        }
+    }
+}
+
+private struct ModeTrackCard: View {
+    let title: String
+    let subtitle: String
+    let detail: String
+    let systemImage: String
+    let accent: Color
+    let statTitle: String
+    let statValue: String
+    let secondaryStatTitle: String
+    let secondaryStatValue: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Image(systemName: systemImage)
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(isSelected ? .white : accent)
+                        .frame(width: 42, height: 42)
+                        .background(isSelected ? accent : accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.headline)
+                        Text(subtitle)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.headline)
+                        .foregroundStyle(isSelected ? accent : .secondary)
+                }
+
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    MiniTrackStat(title: statTitle, value: statValue, color: accent)
+                    MiniTrackStat(title: secondaryStatTitle, value: secondaryStatValue, color: isSelected ? accent : .orange)
                 }
             }
-            .pickerStyle(.segmented)
-
-            Text(mode == .professional ? "Professional overview" : "Patient overview")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isSelected ? accent : Color(.separator).opacity(0.30), lineWidth: isSelected ? 2 : 1)
+            }
         }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct MiniTrackStat: View {
+    let title: String
+    let value: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(color)
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(9)
     }
 }
 
@@ -750,32 +973,6 @@ private struct PatientProfileSection: View {
                     }
                 }
                 .pickerStyle(.segmented)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Monk Skin Tone \(profile.monkSkinTone)")
-                        .font(.subheadline.weight(.semibold))
-
-                    HStack(spacing: 6) {
-                        ForEach(1...10, id: \.self) { tone in
-                            Button {
-                                profile.monkSkinTone = tone
-                            } label: {
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .fill(MonkSkinTonePalette.colors[tone - 1])
-                                    .frame(height: 30)
-                                    .overlay {
-                                        if profile.monkSkinTone == tone {
-                                            Image(systemName: "checkmark")
-                                                .font(.caption.weight(.bold))
-                                                .foregroundStyle(tone > 6 ? .white : .black)
-                                        }
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Monk skin tone \(tone)")
-                        }
-                    }
-                }
             }
         }
     }

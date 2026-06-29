@@ -26,6 +26,8 @@ struct ContentView: View {
     @State private var meshAnchorCount = 0
     @State private var meshVertexCount = 0
     @State private var meshFaceCount = 0
+    @State private var segmentationVolumeApplied = false
+    @State private var volumeSourceText = "LiDAR mesh/depth pending"
 
     @Environment(\.dismiss) private var dismiss
 
@@ -105,6 +107,8 @@ struct ContentView: View {
                     depthCM: estimatedDepthCM,
                     scanQuality: scanQuality,
                     isPreliminary: isPreliminary,
+                    segmentationVolumeApplied: segmentationVolumeApplied,
+                    volumeSourceText: volumeSourceText,
                     shareText: shareSummary,
                     onSave: saveMeasurement
                 )
@@ -229,6 +233,7 @@ struct ContentView: View {
             "Date wounded: \(woundIntake.dateWounded.rawValue)",
             "Severity: \(severityScore)/20",
             "Capture quality: \(scanQuality.title)",
+            "Volume source: \(volumeSourceText)",
             String(format: "Area: %.2f cm²", metricsManager.area),
             String(format: "Volume: %.2f cm³", metricsManager.volume),
             String(format: "Depth: %.2f cm", estimatedDepthCM)
@@ -339,6 +344,12 @@ struct ContentView: View {
                 scanQuality = .scanning
             }
         }
+        if let applied = userInfo["segmentationApplied"] as? Bool {
+            segmentationVolumeApplied = applied
+        }
+        if let source = userInfo["volumeSource"] as? String {
+            volumeSourceText = source
+        }
     }
 
     private func applyMetricsUpdate(_ notification: Notification) {
@@ -348,6 +359,12 @@ struct ContentView: View {
         let volume = userInfo["volume"] as? Float ?? metricsManager.volume
 
         metricsManager.updateMetrics(perimeter: perimeter, area: area, volume: volume)
+        if let source = userInfo["volumeSource"] as? String {
+            volumeSourceText = source
+        }
+        if let applied = userInfo["segmentationApplied"] as? Bool {
+            segmentationVolumeApplied = applied
+        }
 
         if volume > 0 {
             scanInstruction = "Volumetric measurements ready."
@@ -364,6 +381,8 @@ struct ContentView: View {
         isPreliminary = true
         scanQuality = .scanning
         scanProgress = 0
+        segmentationVolumeApplied = false
+        volumeSourceText = "LiDAR mesh/depth scanning"
         scanInstruction = "Starting LiDAR mesh scan. Move slowly around the wound."
         if !meshVisible {
             meshVisible = true
@@ -392,6 +411,8 @@ struct ContentView: View {
         selectedDepthPoint = nil
         metricsManager.resetMetrics()
         scanQuality = .waiting
+        segmentationVolumeApplied = false
+        volumeSourceText = "LiDAR mesh/depth pending"
     }
 
     private func resetScene() {
@@ -406,6 +427,8 @@ struct ContentView: View {
         meshAnchorCount = 0
         meshVertexCount = 0
         meshFaceCount = 0
+        segmentationVolumeApplied = false
+        volumeSourceText = "LiDAR mesh/depth pending"
         scanInstruction = "Point the camera at the wound."
         meshViewerActive = false
         NotificationCenter.default.post(name: NSNotification.Name("ExitMeshViewerMode"), object: nil)
@@ -562,6 +585,8 @@ private struct ScanResultsPanel: View {
     let depthCM: Float
     let scanQuality: ScanQuality
     let isPreliminary: Bool
+    let segmentationVolumeApplied: Bool
+    let volumeSourceText: String
     let shareText: String
     let onSave: () -> Void
 
@@ -574,6 +599,15 @@ private struct ScanResultsPanel: View {
                 ResultMetric(title: "Volume", value: String(format: "%.2f", metrics.volume), unit: "cm³")
                 ResultMetric(title: "Depth", value: String(format: "%.2f", depthCM), unit: "cm")
             }
+
+            Label(
+                volumeSourceText,
+                systemImage: segmentationVolumeApplied ? "checkmark.seal.fill" : "cube.transparent"
+            )
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(segmentationVolumeApplied ? .green : .secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.78)
 
             HStack(spacing: 10) {
                 Label(isPreliminary ? "Capture Quality: \(scanQuality.title) • Preliminary" : "Capture Quality: \(scanQuality.title)", systemImage: scanQuality.symbol)

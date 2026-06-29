@@ -214,7 +214,7 @@
 					};
 				};
 			};
-			buildConfigurationList = AE921D21270D7B02000E95C6 /* Build configuration list for PBXProject "LiDARDepth" */;
+			buildConfigurationList = AE921D21270D7B02000E95C6 /* Build configuration list for PBXProject "WoundCorder" */;
 			compatibilityVersion = "Xcode 13.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -395,8 +395,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_ASSET_PATHS = "\"LiDARDepth/Preview Content\"";
+				DEVELOPMENT_TEAM = Y5L935RVSV;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Vendor",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = LiDARDepth/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Woundcorder uses the camera and depth sensors to scan and measure visible wounds.";
@@ -420,9 +425,15 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					MNN,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.apple-samplecode.LiDARDepth${SAMPLE_CODE_DISAMBIGUATOR}";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_OBJC_BRIDGING_HEADER = "LiDARDepth/WoundCorder-Bridging-Header.h";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_INSTALL_OBJC_HEADER = NO;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -441,8 +452,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_ASSET_PATHS = "\"LiDARDepth/Preview Content\"";
+				DEVELOPMENT_TEAM = Y5L935RVSV;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Vendor",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = LiDARDepth/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Woundcorder uses the camera and depth sensors to scan and measure visible wounds.";
@@ -466,9 +482,15 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					MNN,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.apple-samplecode.LiDARDepth${SAMPLE_CODE_DISAMBIGUATOR}";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_OBJC_BRIDGING_HEADER = "LiDARDepth/WoundCorder-Bridging-Header.h";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_INSTALL_OBJC_HEADER = NO;
 				SWIFT_VERSION = 5.0;
@@ -479,7 +501,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		AE921D21270D7B02000E95C6 /* Build configuration list for PBXProject "LiDARDepth" */ = {
+		AE921D21270D7B02000E95C6 /* Build configuration list for PBXProject "WoundCorder" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AE921D32270D7B04000E95C6 /* Debug */,
