@@ -1,10 +1,10 @@
-# WoundCorder
+# WoundScope
 
-**WoundCorder** is an iOS-based wound documentation and measurement platform designed to make wound assessment more objective, repeatable, and practical outside specialty care.
+**WoundScope** is an iOS-based wound documentation and measurement platform designed to make wound assessment more objective, repeatable, and practical outside specialty care.
 
 Current wound documentation often depends on subjective visual judgment, manual ruler measurements, and inconsistent clinical notes. This creates problems when wounds are monitored over time, especially in home health, skilled nursing facilities, primary care, and other settings where specialty wound care may not be immediately available.
 
-WoundCorder combines **LiDAR-based 3D wound measurement**, **image-based wound documentation**, and **AI-assisted analysis** to help standardize wound tracking while keeping the workflow simple enough for real-world use.
+WoundScope combines **LiDAR-based 3D wound measurement**, **image-based wound documentation**, and **AI-assisted analysis** to help standardize wound tracking while keeping the workflow simple enough for real-world use.
 
 ---
 
@@ -26,7 +26,7 @@ The core problem is turning those photos into reliable, repeatable clinical info
 
 ## Project Overview
 
-WoundCorder is built as a mobile-first wound assessment tool that uses the hardware already available on modern iPhones and iPads.
+WoundScope is built as a mobile-first wound assessment tool that uses the hardware already available on modern iPhones and iPads.
 
 The app is designed to support:
 
@@ -45,7 +45,7 @@ The goal is not to replace clinicians. The goal is to give clinicians better mea
 
 ### LiDAR-Based Wound Measurement
 
-WoundCorder uses Apple’s ARKit and LiDAR capabilities to estimate wound geometry in three dimensions.
+WoundScope uses Apple’s ARKit and LiDAR capabilities to estimate wound geometry in three dimensions.
 
 Planned and implemented measurement features include:
 
@@ -73,7 +73,7 @@ Potential documentation fields include:
 
 ### AI-Assisted Analysis
 
-WoundCorder explores the use of vision-language models and wound-specific AI tools to assist with structured wound documentation.
+WoundScope explores the use of vision-language models and wound-specific AI tools to assist with structured wound documentation.
 
 The AI layer is intended to support internal review and clinician-facing workflows, not provide unsupervised diagnosis or treatment recommendations.
 
@@ -118,7 +118,7 @@ Potential AI outputs include:
 
 ## Current Development Status
 
-WoundCorder is an active prototype. Current work focuses on improving:
+WoundScope is an active prototype. Current work focuses on improving:
 
 - Measurement accuracy
 - Wound boundary detection
@@ -133,7 +133,7 @@ Earlier versions showed promising area measurement performance, but further vali
 
 ## Example Workflow
 
-1. Open the WoundCorder app.
+1. Open the WoundScope app.
 2. Position the device over the wound.
 3. Capture a wound image and LiDAR scan.
 4. Mark or refine the wound boundary.
@@ -146,7 +146,7 @@ Earlier versions showed promising area measurement performance, but further vali
 
 ## Clinical Use Case
 
-WoundCorder is designed for settings where wound monitoring needs to be more consistent and scalable, including:
+WoundScope is designed for settings where wound monitoring needs to be more consistent and scalable, including:
 
 - Home health
 - Skilled nursing facilities
@@ -162,7 +162,7 @@ The app is especially relevant for chronic wounds where tracking healing over ti
 
 ## Safety and Limitations
 
-WoundCorder is a prototype and is not currently intended to replace clinical judgment.
+WoundScope is a prototype and is not currently intended to replace clinical judgment.
 
 Important limitations include:
 
@@ -205,7 +205,7 @@ Planned development areas include:
 ## Repository Structure
 
 ```text
-WoundCorder/
+WoundScope/
 ├── iOS-App/
 │   ├── ARKit measurement views
 │   ├── wound boundary tools
