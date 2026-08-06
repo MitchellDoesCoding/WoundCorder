@@ -24,8 +24,8 @@ struct Wound3DGeometry {
     let boundaryWorldPoints: [SIMD3<Float>]
     let boundaryScreenPoints: [CGPoint]
     let deepestWorldPoint: SIMD3<Float>?
-    let skinPlaneOrigin: SIMD3<Float>
-    let skinPlaneNormal: SIMD3<Float>
+    let referenceSurfaceOrigin: SIMD3<Float>
+    let referenceSurfaceNormal: SIMD3<Float>
     let sampledPointCount: Int
     let validDepthPixelCount: Int
 }
@@ -38,7 +38,6 @@ struct WoundSegmentationResult {
     let maxDepthMm: Float
     let perimeter: Float
     let confidence: Float
-    let skinToneITA: Float
     let colorFeatures: WoundColorFeatures
     let geometry: Wound3DGeometry
 }
@@ -199,7 +198,6 @@ final class WoundMultimodalSegmenter {
 
         let boundingRect = boundingRectForMask(temporalMask, threshold: segmentationThreshold)
         let colorFeatures = computeColorFeatures(mask: temporalMask, colorGrid: colorGrid)
-        let skinITA = computeSkinITA(mask: temporalMask, colorGrid: colorGrid, boundingRect: boundingRect)
         let confidence = computeConfidence(
             mask: temporalMask,
             source: maskSource,
@@ -211,8 +209,8 @@ final class WoundMultimodalSegmenter {
             boundaryWorldPoints: worldBoundary,
             boundaryScreenPoints: screenBoundary,
             deepestWorldPoint: metrics.deepestWorldPoint,
-            skinPlaneOrigin: metrics.plane.origin,
-            skinPlaneNormal: metrics.plane.normal,
+            referenceSurfaceOrigin: metrics.plane.origin,
+            referenceSurfaceNormal: metrics.plane.normal,
             sampledPointCount: metrics.sampledPointCount,
             validDepthPixelCount: metrics.validDepthPixelCount
         )
@@ -225,7 +223,6 @@ final class WoundMultimodalSegmenter {
             maxDepthMm: metrics.maxDepthMm,
             perimeter: metrics.perimeterCm,
             confidence: confidence,
-            skinToneITA: skinITA,
             colorFeatures: colorFeatures,
             geometry: geometry
         )
@@ -1075,35 +1072,6 @@ final class WoundMultimodalSegmenter {
         }
 
         return WoundColorFeatures(meanLAB: (meanL, meanA, meanB), rednessIndex: redness, tissueClassification: tissue)
-    }
-
-    private func computeSkinITA(mask: MaskGrid, colorGrid: ColorGrid, boundingRect: CGRect) -> Float {
-        guard boundingRect != .zero else { return 0 }
-        let width = mask.width
-        let height = mask.height
-        let insetX = max(4, Int(CGFloat(width) * boundingRect.width * 0.34))
-        let insetY = max(4, Int(CGFloat(height) * boundingRect.height * 0.34))
-        let minX = max(0, Int(boundingRect.minX * CGFloat(width)) - insetX)
-        let maxX = min(width - 1, Int(boundingRect.maxX * CGFloat(width)) + insetX)
-        let minY = max(0, Int(boundingRect.minY * CGFloat(height)) - insetY)
-        let maxY = min(height - 1, Int(boundingRect.maxY * CGFloat(height)) + insetY)
-
-        var lSum: Float = 0
-        var bSum: Float = 0
-        var count: Float = 0
-        for y in minY...maxY {
-            for x in minX...maxX {
-                let index = y * width + x
-                guard mask.values[index] <= segmentationThreshold else { continue }
-                lSum += colorGrid.lStar[index]
-                bSum += colorGrid.bStar[index]
-                count += 1
-            }
-        }
-        guard count > 0 else { return 0 }
-        let meanL = lSum / count
-        let meanB = bSum / count
-        return atan2(meanL - 50.0, max(meanB, 0.001)) * 180.0 / .pi
     }
 
     private func computeConfidence(

@@ -1,19 +1,10 @@
 import Foundation
 import UIKit
-
-
-
-///
-///
-///DONT PUT FILE IN
-///
-///
 #if targetEnvironment(simulator)
 // Simulator can reach your Mac via loopback:
 private let defaultBase = "http://127.0.0.1:3000"
 #else
-// On device: replace with your Mac’s LAN IP (same Wi-Fi as device)
-private let defaultBase = "https://6727e030ebe5.ngrok-free.app" //Change if needed
+private let defaultBase = "http://127.0.0.1:3000"
 #endif
 
 private let defaultDetectorEndpoint = "\(defaultBase)/api/analyze-wound"
@@ -60,13 +51,6 @@ final class WoundDetector: @unchecked Sendable {
 
         let boundary = "Boundary-\(UUID().uuidString)"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        
-        request.setValue(
-            "fsdat-vlnkhiou439o7yn-sdspm08-9up4ji-opsp4p3vp8", /// DO NOT PAST
-            ///E IN
-            forHTTPHeaderField: "x-api-key" ////DO NOT PUt This fiLE IN
-        )
-
         let metadataData: Data? = {
             guard let metadata else { return nil }
             return try? JSONSerialization.data(withJSONObject: metadata, options: [])
@@ -104,9 +88,7 @@ final class WoundDetector: @unchecked Sendable {
                 throw DetectorError.server(
                     """
                     Cannot connect to \(endpointURL.absoluteString).
-                    • If you're on device: make sure the ngrok URL is current.
-                    • If you restarted ngrok, update defaultBase.
-                    • Make sure server is still running.
+                    Check the Legacy Server URL in Settings or switch Wound AI back to On Device.
                     """
                 )
             default:

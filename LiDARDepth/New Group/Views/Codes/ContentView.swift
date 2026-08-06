@@ -76,17 +76,22 @@ struct ContentView: View {
                 applyMetricsUpdate(notification)
             }
 
-            DimensionOverlay(
-                area: metricsManager.area,
-                depth: estimatedDepthCM,
-                bodyArea: woundIntake.bodyArea,
-                laterality: woundIntake.laterality
-            )
-
             VStack(spacing: 0) {
                 scanHeader
                     .padding(.horizontal, 14)
                     .padding(.top, 12)
+
+                if hasMeasurement {
+                    DimensionOverlay(
+                        area: metricsManager.area,
+                        depth: estimatedDepthCM,
+                        bodyArea: woundIntake.bodyArea,
+                        laterality: woundIntake.laterality
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+                }
 
                 Spacer()
 
@@ -118,14 +123,10 @@ struct ContentView: View {
                 ScanControlsBar(
                     isDetecting: isDetecting,
                     meshVisible: meshVisible,
-                    classificationColors: classificationColors,
                     showManualControls: $showManualControls,
                     onStartScan: startLiDARScan,
                     onReset: resetScene,
                     onToggleMesh: toggleMesh,
-                    onToggleClassification: toggleClassificationColors,
-                    onExport: exportScene,
-                    onImageAnalysis: { showImageAnalysis = true },
                     onMoreActions: {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             showMoreActions.toggle()
@@ -138,6 +139,7 @@ struct ContentView: View {
                 if showMoreActions {
                     MoreScanActionsPanel(
                         meshViewerActive: meshViewerActive,
+                        classificationColors: classificationColors,
                         onGuidedRefine: {
                             showMoreActions = false
                             showManualControls = true
@@ -145,6 +147,14 @@ struct ContentView: View {
                         onToggleMeshViewer: {
                             showMoreActions = false
                             toggleMeshViewerMode()
+                        },
+                        onToggleClassification: {
+                            showMoreActions = false
+                            toggleClassificationColors()
+                        },
+                        onExport: {
+                            showMoreActions = false
+                            exportScene()
                         },
                         onImageAnalysis: {
                             showMoreActions = false
@@ -223,6 +233,10 @@ struct ContentView: View {
 
     private var estimatedDepthCM: Float {
         WoundSeverityScorer.depthCM(area: metricsManager.area, volume: metricsManager.volume)
+    }
+
+    private var hasMeasurement: Bool {
+        metricsManager.area > 0 || metricsManager.volume > 0
     }
 
     private var shareSummary: String {
@@ -711,18 +725,14 @@ struct MetricsView: View {
 private struct ScanControlsBar: View {
     let isDetecting: Bool
     let meshVisible: Bool
-    let classificationColors: Bool
     @Binding var showManualControls: Bool
     let onStartScan: () -> Void
     let onReset: () -> Void
     let onToggleMesh: () -> Void
-    let onToggleClassification: () -> Void
-    let onExport: () -> Void
-    let onImageAnalysis: () -> Void
     let onMoreActions: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Button(action: onStartScan) {
                 Label(isDetecting ? "Scanning" : "Scan", systemImage: "viewfinder.circle")
                     .font(.headline)
@@ -732,8 +742,7 @@ private struct ScanControlsBar: View {
             .buttonStyle(.borderedProminent)
 
             IconControl(systemImage: meshVisible ? "cube.fill" : "cube", title: "Mesh", isActive: meshVisible, action: onToggleMesh)
-            IconControl(systemImage: classificationColors ? "paintpalette.fill" : "paintpalette", title: "Mesh colors", isActive: classificationColors, action: onToggleClassification)
-            IconControl(systemImage: "square.and.arrow.up", title: "Export 3D", isActive: false, action: onExport)
+            IconControl(systemImage: "arrow.clockwise", title: "Reset", isActive: false, action: onReset)
 
             Button(action: onMoreActions) {
                 Image(systemName: "ellipsis.circle")
@@ -859,8 +868,11 @@ private struct MeshStat: View {
 
 private struct MoreScanActionsPanel: View {
     let meshViewerActive: Bool
+    let classificationColors: Bool
     let onGuidedRefine: () -> Void
     let onToggleMeshViewer: () -> Void
+    let onToggleClassification: () -> Void
+    let onExport: () -> Void
     let onImageAnalysis: () -> Void
     let onReset: () -> Void
     let onSettings: () -> Void
@@ -877,9 +889,18 @@ private struct MoreScanActionsPanel: View {
             }
 
             HStack(spacing: 8) {
-                ActionTile(title: "Image Analysis", systemImage: "photo.viewfinder", action: onImageAnalysis)
+                ActionTile(
+                    title: classificationColors ? "Plain Mesh" : "Mesh Colors",
+                    systemImage: classificationColors ? "circle.grid.cross" : "paintpalette",
+                    action: onToggleClassification
+                )
+                ActionTile(title: "Export 3D", systemImage: "square.and.arrow.up", action: onExport)
+                ActionTile(title: "Image AI", systemImage: "photo.viewfinder", action: onImageAnalysis)
+            }
+
+            HStack(spacing: 8) {
                 ActionTile(title: "Reset Scan", systemImage: "arrow.clockwise", action: onReset)
-                ActionTile(title: "Settings", systemImage: "info.circle", action: onSettings)
+                ActionTile(title: "Settings", systemImage: "gearshape", action: onSettings)
             }
         }
         .padding(10)

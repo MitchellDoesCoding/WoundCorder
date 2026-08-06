@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import SwiftUI
+import UIKit
 
 enum WoundAppMode: String, CaseIterable, Identifiable {
     case publicPatient = "Consumer"
@@ -12,6 +13,35 @@ enum WoundAppMode: String, CaseIterable, Identifiable {
         switch self {
         case .publicPatient: return "Consumer"
         case .professional: return "Professional"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .publicPatient: return "person.crop.circle.badge.checkmark"
+        case .professional: return "stethoscope.circle.fill"
+        }
+    }
+
+    var shortDetail: String {
+        switch self {
+        case .publicPatient:
+            return "Simple language, personal progress, and clear next steps."
+        case .professional:
+            return "Clinical terminology, structured observations, risk flags, and review notes."
+        }
+    }
+
+    var analysisPrompt: String {
+        switch self {
+        case .publicPatient:
+            return """
+            You are WoundCorder's patient-facing wound documentation assistant. Analyze the wound image cautiously and use simple, reassuring language. Do not diagnose, prescribe, or replace clinician judgment. Return strict JSON only with these keys: summary_html, capture_quality, what_to_watch, care_questions, when_to_contact_clinician, limitations. summary_html must be concise HTML using h2, p, ul, li, and strong tags only. Explain uncertainty plainly and remind the user to contact a clinician for worsening pain, spreading redness, fever, odor, pus, bleeding, or rapid deterioration.
+            """
+        case .professional:
+            return """
+            You are WoundCorder's clinician-facing wound documentation assistant. Analyze the wound image cautiously for documentation support, not autonomous diagnosis or treatment. Return strict JSON only with these keys: summary_html, wound_bed_observations, periwound_observations, exudate_or_infection_concerns, severity_rationale, capture_quality, recommended_review_actions, limitations. summary_html must be clinically detailed HTML using h2, p, ul, li, table, tr, th, td, and strong tags only. Include uncertainty, image-quality caveats, and clinician review language.
+            """
         }
     }
 }
@@ -125,6 +155,141 @@ struct WoundIntakeData: Equatable {
     var notes: String = ""
     var prescriptionAttachmentName: String = ""
     var medicineEntries: [String] = []
+}
+
+struct CatalogedWoundPhoto: Identifiable, Codable, Equatable {
+    let id: UUID
+    let date: Date
+    let fileName: String
+    var note: String
+    var bodyArea: String?
+    var laterality: String?
+
+    init(
+        id: UUID = UUID(),
+        date: Date = Date(),
+        fileName: String,
+        note: String = "",
+        bodyArea: String? = nil,
+        laterality: String? = nil
+    ) {
+        self.id = id
+        self.date = date
+        self.fileName = fileName
+        self.note = note
+        self.bodyArea = bodyArea
+        self.laterality = laterality
+    }
+
+    var displayTitle: String {
+        let side = laterality.map { "\($0) " } ?? ""
+        if let bodyArea, !bodyArea.isEmpty {
+            return "\(side)\(bodyArea)"
+        }
+        return "Wound photo"
+    }
+}
+
+@MainActor
+final class WoundPhotoCatalogManager: ObservableObject {
+    @AppStorage("catalogedWoundPhotos") private var storedJSON: String = ""
+
+    @Published private(set) var items: [CatalogedWoundPhoto] = [] {
+        didSet { persist() }
+    }
+
+    private let fileManager = FileManager.default
+
+    init() {
+        load()
+        try? prepareDirectory()
+    }
+
+    func add(
+        image: UIImage,
+        bodyArea: BodyArea? = nil,
+        laterality: Laterality? = nil,
+        note: String = ""
+    ) throws {
+        try prepareDirectory()
+        let id = UUID()
+        let fileName = "\(id.uuidString).jpg"
+        let url = Self.photosDirectory.appendingPathComponent(fileName)
+        guard let data = image.scaled(maxDimension: 1600).jpegData(compressionQuality: 0.84) else {
+            throw PhotoCatalogError.encodingFailed
+        }
+        try data.write(to: url, options: [.atomic])
+
+        let photo = CatalogedWoundPhoto(
+            id: id,
+            fileName: fileName,
+            note: note,
+            bodyArea: bodyArea?.rawValue,
+            laterality: laterality?.rawValue
+        )
+        items.insert(photo, at: 0)
+    }
+
+    func delete(_ photo: CatalogedWoundPhoto) {
+        let url = imageURL(for: photo)
+        try? fileManager.removeItem(at: url)
+        items.removeAll { $0.id == photo.id }
+    }
+
+    func imageURL(for photo: CatalogedWoundPhoto) -> URL {
+        Self.photosDirectory.appendingPathComponent(photo.fileName)
+    }
+
+    func shareText(for photo: CatalogedWoundPhoto) -> String {
+        var lines = [
+            "WoundCorder photo",
+            "Captured: \(photo.date.formatted(date: .abbreviated, time: .shortened))",
+            "Location: \(photo.displayTitle)"
+        ]
+        if !photo.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.append("Note: \(photo.note)")
+        }
+        lines.append("Shared by explicit user action.")
+        return lines.joined(separator: "\n")
+    }
+
+    private static var photosDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("WoundCorder", isDirectory: true)
+            .appendingPathComponent("PhotoCatalog", isDirectory: true)
+    }
+
+    private func prepareDirectory() throws {
+        try fileManager.createDirectory(at: Self.photosDirectory, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var directory = Self.photosDirectory
+        try? directory.setResourceValues(values)
+    }
+
+    private func load() {
+        guard !storedJSON.isEmpty, let data = storedJSON.data(using: .utf8) else {
+            items = []
+            return
+        }
+        items = (try? JSONDecoder().decode([CatalogedWoundPhoto].self, from: data)) ?? []
+    }
+
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(items) else { return }
+        storedJSON = String(data: data, encoding: .utf8) ?? ""
+    }
+}
+
+enum PhotoCatalogError: LocalizedError {
+    case encodingFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .encodingFailed:
+            return "The photo could not be prepared for the catalog."
+        }
+    }
 }
 
 enum WoundSeverityScorer {

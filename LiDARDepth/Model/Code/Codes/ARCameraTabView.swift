@@ -13,16 +13,18 @@ struct ARCameraTabView: View {
     @State private var showPicker = false
     @State private var selectedItem: PhotosPickerItem? = nil
     @State private var analysisText: String? = nil
-    @State private var pendingImage: UIImage? = nil
     @State private var snapshotRequestID: Int = 0
     @State private var showComorbiditySheet = false
     @State private var selectedComorbidities: ComorbidityChecklist? = nil
     @State private var isAnalyzing = false
     @AppStorage("woundServerBaseURL") private var baseURL: String = ""
+    @AppStorage("woundAnalysisProvider") private var analysisProviderRaw = WoundAnalysisProvider.onDevice.rawValue
+    @AppStorage("woundOnDeviceModelID") private var selectedModelID = OnDeviceModelStore.defaultModelID
+    @AppStorage("woundAppMode") private var modeRaw = WoundAppMode.publicPatient.rawValue
     @State private var showSettings = false
     @State private var formattedAnalysis: AttributedString? = nil
-    @State private var autoEdgeDetection = false
     @AppStorage("showLegacyControls") private var showLegacyControls: Bool = false
+    @StateObject private var localAnalyzer = OnDeviceWoundAnalyzer()
 
     @State private var latestAnalysisSummary: AttributedString? = nil
     
@@ -31,13 +33,21 @@ struct ARCameraTabView: View {
     @State private var analysisTimer: Timer? = nil
 
     private var detector: WoundDetector {
-        #if targetEnvironment(simulator)
         let base = baseURL.isEmpty ? "http://127.0.0.1:3000" : baseURL
-        #else
-        let base = baseURL.isEmpty ? "https://66a8-47-154-26-108.ngrok-free.app" : baseURL // ACUTALYL USRl
-        #endif
         let endpoint = URL(string: "\(base)/api/analyze-wound")!
         return WoundDetector(endpoint: endpoint, session: .shared)
+    }
+
+    private var selectedProvider: WoundAnalysisProvider {
+        WoundAnalysisProvider(rawValue: analysisProviderRaw) ?? .onDevice
+    }
+
+    private var selectedMode: WoundAppMode {
+        WoundAppMode(rawValue: modeRaw) ?? .publicPatient
+    }
+
+    private var activeModel: OnDeviceModelDescriptor {
+        OnDeviceModelStore.shared.model(withID: selectedModelID) ?? .qwen3VL4B
     }
 
     var body: some View {
@@ -162,12 +172,12 @@ struct ARCameraTabView: View {
                 }
             )
         ) { item in
-            AnalysisResultView(markdown: item.markdown) { title in
+            AnalysisResultView(rawOutput: item.markdown, mode: selectedMode) { title in
                 logManager.add(title: title.isEmpty ? "Analysis" : title, perimeter: 0, area: 0, volume: 0)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SubmitVolumeFeedback"))) { notification in
-            guard let userInfo = (notification as? Notification)?.userInfo,
+            guard let userInfo = notification.userInfo,
                   let perimeter = userInfo["perimeter"] as? Float,
                   let area = userInfo["area"] as? Float,
                   let volume = userInfo["volume"] as? Float else {
@@ -202,12 +212,23 @@ struct ARCameraTabView: View {
             let t0 = CFAbsoluteTimeGetCurrent()
             let reduced = image.scaled(maxDimension: 1024)
             let t1 = CFAbsoluteTimeGetCurrent()
-            let metadataDict = selectedComorbidities?.asDictionary()
-            let result = try await detector.analyze(image: reduced, metadata: metadataDict)
+            let raw: String
+            if selectedProvider == .onDevice {
+                raw = try await localAnalyzer.analyze(
+                    image: reduced,
+                    model: activeModel,
+                    prompt: selectedMode.analysisPrompt
+                )
+            } else {
+                let result = try await detector.analyze(
+                    image: reduced,
+                    metadata: analysisMetadata(mode: selectedMode)
+                )
+                raw = result.summary
+            }
             let t2 = CFAbsoluteTimeGetCurrent()
-            print(String(format: "Timing: scale=%.2fs, network+server=%.2fs, total=%.2fs", t1 - t0, t2 - t1, t2 - t0))
+            print(String(format: "Timing: scale=%.2fs, analysis=%.2fs, total=%.2fs", t1 - t0, t2 - t1, t2 - t0))
             await MainActor.run {
-                let raw = String(describing: result)
                 self.analysisText = raw
                 self.formattedAnalysis = SummaryFormatter.formatMarkdown(raw)
                 self.latestAnalysisSummary = self.formattedAnalysis
@@ -235,14 +256,18 @@ struct ARCameraTabView: View {
             }
         }
     }
+
+    private func analysisMetadata(mode: WoundAppMode) -> [String: String] {
+        var metadata = selectedComorbidities?.asDictionary() ?? [:]
+        metadata["woundcorder_mode"] = mode.rawValue
+        metadata["audience"] = mode == .professional ? "professional" : "consumer"
+        metadata["output_format"] = "strict_json_with_summary_html"
+        metadata["prompt"] = mode.analysisPrompt
+        return metadata
+    }
     
     private func sendVolumeFeedback(perimeter: Float, area: Float, volume: Float) async {
-        // Build endpoint using the same baseURL logic as detector
-        #if targetEnvironment(simulator)
         let base = baseURL.isEmpty ? "http://127.0.0.1:3000" : baseURL
-        #else
-        let base = baseURL.isEmpty ? "https://dae3083997de.ngrok-free.app" : baseURL
-        #endif
         guard let url = URL(string: "\(base)/api/feedback") else {
             print("Invalid feedback URL")
             return
@@ -285,20 +310,75 @@ extension UIImage {
     }
 }
 
+@MainActor
+final class OnDeviceWoundAnalyzer: ObservableObject {
+    private let bridge = OnDeviceMNNBridge()
+    private var loadedModelID: String?
+
+    func analyze(image: UIImage, model: OnDeviceModelDescriptor, prompt: String) async throws -> String {
+        guard OnDeviceMNNBridge.isRuntimeAvailable() else {
+            throw LocalAnalysisError.deviceRequired
+        }
+        guard OnDeviceModelStore.shared.isInstalled(model) else {
+            throw LocalAnalysisError.modelNotInstalled(model.displayName)
+        }
+
+        if loadedModelID != model.id {
+            try await load(model)
+        }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            bridge.analyze(image, prompt: prompt, maxTokens: 768) { output, error in
+                if let output, !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    continuation.resume(returning: output)
+                } else {
+                    continuation.resume(throwing: LocalAnalysisError.inferenceFailed(error ?? "The local model did not return a response."))
+                }
+            }
+        }
+    }
+
+    private func load(_ model: OnDeviceModelDescriptor) async throws {
+        let path = OnDeviceModelStore.shared.modelDirectory(for: model).path
+        try await withCheckedThrowingContinuation { continuation in
+            bridge.loadModel(atPath: path) { success, error in
+                if success {
+                    continuation.resume()
+                } else {
+                    continuation.resume(throwing: LocalAnalysisError.inferenceFailed(error ?? "The model could not be loaded."))
+                }
+            }
+        }
+        loadedModelID = model.id
+    }
+}
+
+enum LocalAnalysisError: LocalizedError {
+    case deviceRequired
+    case modelNotInstalled(String)
+    case inferenceFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .deviceRequired:
+            return "On-device Wound AI requires a physical iPhone or iPad. Use Legacy Server only for explicit testing."
+        case .modelNotInstalled(let name):
+            return "\(name) is not installed. Open Settings > Wound AI > Models & Privacy to download or import it."
+        case .inferenceFailed(let message):
+            return message
+        }
+    }
+}
+
 private struct AnalysisResult: Identifiable {
     let id = UUID()
     let markdown: String
 }
 
 private struct AnalysisResultView: View {
-    enum CardStyle {
-        case none
-        case rounded(radius: CGFloat)
-    }
-
-    let markdown: String
+    let rawOutput: String
+    let mode: WoundAppMode
     let onSave: (String) -> Void
-    var cardStyle: CardStyle = .rounded(radius: 16) // default
 
     @Environment(\.dismiss) private var dismiss
     @State private var title: String = ""
@@ -306,14 +386,24 @@ private struct AnalysisResultView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    MarkdownWithCodeBlocksView(markdown: markdown)
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 10) {
+                        Image(systemName: mode.systemImage)
+                            .foregroundStyle(mode == .professional ? .indigo : .teal)
+                        Text(mode == .professional ? "Professional Analysis" : "Consumer Analysis")
+                            .font(.headline)
+                        Spacer()
+                    }
+
+                    TextField("Save title", text: $title)
+                        .textFieldStyle(.roundedBorder)
+
+                    StructuredAnalysisContent(raw: rawOutput)
                         .textSelection(.enabled)
                 }
-                .padding()
-                .background(backgroundView())
-                .padding(cardPadding())
+                .padding(16)
             }
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("Analysis")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -329,27 +419,151 @@ private struct AnalysisResultView: View {
             }
         }
     }
+}
 
-    private func backgroundView() -> some View {
-        Group {
-            switch cardStyle {
-            case .none:
-                Color.clear
-            case .rounded(let radius):
-                RoundedRectangle(cornerRadius: radius)
-                    .fill(Color(.systemBackground))
-                    .shadow(radius: 6)
+private struct StructuredAnalysisContent: View {
+    let raw: String
+
+    var body: some View {
+        if let object = AIResponseParser.jsonObject(from: raw) {
+            JSONAnalysisView(object: object)
+        } else if AIResponseParser.looksLikeHTML(raw) {
+            HTMLAnalysisView(html: raw)
+        } else {
+            MarkdownWithCodeBlocksView(markdown: raw)
+                .padding(14)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+}
+
+private struct JSONAnalysisView: View {
+    let object: [String: Any]
+
+    private var orderedKeys: [String] {
+        let preferred = [
+            "summary_html",
+            "wound_bed_observations",
+            "periwound_observations",
+            "exudate_or_infection_concerns",
+            "severity_rationale",
+            "what_to_watch",
+            "care_questions",
+            "when_to_contact_clinician",
+            "capture_quality",
+            "recommended_review_actions",
+            "limitations"
+        ]
+        let known = preferred.filter { object[$0] != nil }
+        let extra = object.keys.filter { !preferred.contains($0) }.sorted()
+        return known + extra
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(orderedKeys, id: \.self) { key in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title(for: key))
+                        .font(.headline)
+
+                    if key.localizedCaseInsensitiveContains("html"),
+                       let html = object[key] as? String {
+                        HTMLAnalysisView(html: html)
+                    } else {
+                        Text(render(value: object[key] ?? ""))
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(14)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
     }
 
-    private func cardPadding() -> EdgeInsets {
-        switch cardStyle {
-        case .none:
-            return EdgeInsets()
-        case .rounded:
-            return EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8)
+    private func title(for key: String) -> String {
+        key.replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { word in
+                let text = String(word)
+                return text.prefix(1).uppercased() + String(text.dropFirst())
+            }
+            .joined(separator: " ")
+    }
+
+    private func render(value: Any) -> String {
+        if let string = value as? String { return string }
+        if let array = value as? [Any] {
+            return array.map { "• \(render(value: $0))" }.joined(separator: "\n")
         }
+        if let dict = value as? [String: Any] {
+            return dict.keys.sorted().map { "\(title(for: $0)): \(render(value: dict[$0] ?? ""))" }.joined(separator: "\n")
+        }
+        return String(describing: value)
+    }
+}
+
+private struct HTMLAnalysisView: View {
+    let html: String
+
+    var body: some View {
+        Text(attributedHTML)
+            .font(.body)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var attributedHTML: AttributedString {
+        let wrapped = """
+        <style>
+        body { font-family: -apple-system; font-size: 16px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 6px; border-bottom: 1px solid #d0d0d0; text-align: left; }
+        </style>
+        \(html)
+        """
+        guard let data = wrapped.data(using: .utf8),
+              let ns = try? NSAttributedString(
+                data: data,
+                options: [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue
+                ],
+                documentAttributes: nil
+              ) else {
+            return AttributedString(html)
+        }
+        return AttributedString(ns)
+    }
+}
+
+private enum AIResponseParser {
+    static func jsonObject(from raw: String) -> [String: Any]? {
+        let cleaned = stripFence(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = cleaned.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return object
+    }
+
+    static func looksLikeHTML(_ raw: String) -> Bool {
+        let lower = raw.lowercased()
+        return lower.contains("<h1") || lower.contains("<h2") || lower.contains("<p") || lower.contains("<ul") || lower.contains("<table")
+    }
+
+    private static func stripFence(_ raw: String) -> String {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.hasPrefix("```") else { return text }
+        let lines = text.split(omittingEmptySubsequences: false, whereSeparator: { $0.isNewline })
+        guard lines.count >= 2 else { return text }
+        var body = Array(lines.dropFirst())
+        if body.last?.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("```") == true {
+            body.removeLast()
+        }
+        text = body.map(String.init).joined(separator: "\n")
+        return text
     }
 }
 
@@ -390,7 +604,7 @@ private enum MarkdownBlockParser {
         // Very small, fence-only parser.
         // Supports ```lang\n...``` and preserves everything else as markdown.
         var result: [MarkdownBlock] = []
-        var lines = input.split(omittingEmptySubsequences: false, whereSeparator: { $0.isNewline })
+        let lines = input.split(omittingEmptySubsequences: false, whereSeparator: { $0.isNewline })
         var i = 0
 
         func flushMarkdown(_ buffer: inout String) {
@@ -642,7 +856,7 @@ final class ARCameraViewController: UIViewController, ARSCNViewDelegate {
                                              dataStride: geometry.vertices.stride)
 
         // Normal source (optional). If not available, SceneKit can compute per-pixel normals; we keep it nil.
-        var sources: [SCNGeometrySource] = [vertexSource]
+        let sources: [SCNGeometrySource] = [vertexSource]
 
         // Faces (triangles)
         let facesDesc = geometry.faces
@@ -761,4 +975,3 @@ final class ARCameraViewController: UIViewController, ARSCNViewDelegate {
         removeOcclusionNode(for: anchor)
     }
 }
-

@@ -1,5 +1,6 @@
 import PhotosUI
 import SwiftUI
+import UIKit
 
 private enum RootScreen {
     case home
@@ -8,13 +9,14 @@ private enum RootScreen {
 
 struct RootView: View {
     @StateObject private var logManager = MeasurementLogManager()
+    @StateObject private var photoCatalog = WoundPhotoCatalogManager()
     @StateObject private var voiceRecorder = VoiceNoteRecorder()
 
     @AppStorage("hasCompletedWelcomeConsent") private var hasCompletedWelcomeConsent = false
     @AppStorage("researchUsageConsent") private var researchUsageConsent = false
     @AppStorage("homeAppearanceMode") private var homeAppearanceRaw = HomeAppearanceMode.light.rawValue
+    @AppStorage("woundAppMode") private var selectedModeRaw = WoundAppMode.publicPatient.rawValue
 
-    @State private var selectedMode: WoundAppMode = .publicPatient
     @State private var patientProfile = PatientProfile()
     @State private var woundIntake = WoundIntakeData()
     @State private var screen: RootScreen = .home
@@ -22,6 +24,7 @@ struct RootView: View {
     @State private var showImageAnalysis = false
     @State private var showLogs = false
     @State private var showSettings = false
+    @State private var showPhotoCatalog = false
     @State private var selectedPrescriptionItem: PhotosPickerItem?
 
     private func logoImage() -> Image? {
@@ -111,21 +114,21 @@ struct RootView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
+        .sheet(isPresented: $showPhotoCatalog) {
+            WoundPhotoCatalogView(catalog: photoCatalog, mode: selectedMode)
+        }
         .onChange(of: selectedPrescriptionItem) { _, newItem in
             guard newItem != nil else { return }
             woundIntake.prescriptionAttachmentName = "Prescription or note attached"
         }
     }
 
-    private var homeAppearance: HomeAppearanceMode {
-        HomeAppearanceMode(rawValue: homeAppearanceRaw) ?? .light
+    private var selectedMode: WoundAppMode {
+        WoundAppMode(rawValue: selectedModeRaw) ?? .publicPatient
     }
 
-    private var homeAppearanceBinding: Binding<HomeAppearanceMode> {
-        Binding(
-            get: { homeAppearance },
-            set: { homeAppearanceRaw = $0.rawValue }
-        )
+    private var homeAppearance: HomeAppearanceMode {
+        HomeAppearanceMode(rawValue: homeAppearanceRaw) ?? .light
     }
 
     @ViewBuilder
@@ -134,13 +137,14 @@ struct RootView: View {
         case .home:
             WoundHomeView(
                 logoImage: logoImage(),
-                mode: $selectedMode,
-                appearance: homeAppearanceBinding,
+                mode: selectedMode,
                 items: logManager.items,
+                photoCount: photoCatalog.items.count,
                 patientCount: patientCount,
                 severeCount: severeCount,
                 needsReviewCount: needsReviewCount,
                 onNewWound: beginNewWound,
+                onPhotoCatalog: { showPhotoCatalog = true },
                 onImageAnalysis: { showImageAnalysis = true },
                 onViewLogs: { showLogs = true }
             )
@@ -162,49 +166,6 @@ struct RootView: View {
         woundIntake = WoundIntakeData()
         selectedPrescriptionItem = nil
         screen = .intake
-    }
-
-    private var header: some View {
-        HStack(spacing: 14) {
-            if let logo = logoImage() {
-                logo
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 58, height: 58)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            } else {
-                Image(systemName: "viewfinder.circle")
-                    .font(.system(size: 44))
-                    .foregroundStyle(.blue)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Any visible wound")
-                    .font(.title2.weight(.bold))
-                Text("Depth-first scan, body-part agnostic intake, offline-friendly measurement.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-        }
-        .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private var modePicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("Mode", selection: $selectedMode) {
-                ForEach(WoundAppMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            Text(selectedMode.displayName)
-                .font(.headline)
-                .foregroundStyle(.secondary)
-        }
     }
 
     private var latestSeverity: Int {
@@ -232,13 +193,14 @@ struct RootView: View {
 
 private struct WoundHomeView: View {
     let logoImage: Image?
-    @Binding var mode: WoundAppMode
-    @Binding var appearance: HomeAppearanceMode
+    let mode: WoundAppMode
     let items: [SavedMeasurement]
+    let photoCount: Int
     let patientCount: Int
     let severeCount: Int
     let needsReviewCount: Int
     let onNewWound: () -> Void
+    let onPhotoCatalog: () -> Void
     let onImageAnalysis: () -> Void
     let onViewLogs: () -> Void
 
@@ -247,35 +209,33 @@ private struct WoundHomeView: View {
             HomeHeader(
                 logoImage: logoImage,
                 mode: mode,
-                appearance: $appearance,
                 woundCount: items.count,
+                photoCount: photoCount,
                 patientCount: patientCount,
                 severeCount: severeCount,
                 needsReviewCount: needsReviewCount
             )
 
-            HomeModeWorkspaceSelector(
-                mode: $mode,
-                woundCount: items.count,
-                patientCount: patientCount,
-                severeCount: severeCount,
-                needsReviewCount: needsReviewCount
-            )
+            HomeModeStatusCard(mode: mode)
 
             if mode == .publicPatient {
                 PatientHomeOverview(
                     items: items,
+                    photoCount: photoCount,
                     onNewWound: onNewWound,
+                    onPhotoCatalog: onPhotoCatalog,
                     onImageAnalysis: onImageAnalysis,
                     onViewLogs: onViewLogs
                 )
             } else {
                 ProfessionalHomeOverview(
                     items: items,
+                    photoCount: photoCount,
                     patientCount: patientCount,
                     severeCount: severeCount,
                     needsReviewCount: needsReviewCount,
                     onAddPatient: onNewWound,
+                    onPhotoCatalog: onPhotoCatalog,
                     onScanPatient: onNewWound,
                     onViewLogs: onViewLogs
                 )
@@ -304,8 +264,8 @@ private struct HomeFlowBackground: View {
 private struct HomeHeader: View {
     let logoImage: Image?
     let mode: WoundAppMode
-    @Binding var appearance: HomeAppearanceMode
     let woundCount: Int
+    let photoCount: Int
     let patientCount: Int
     let severeCount: Int
     let needsReviewCount: Int
@@ -335,13 +295,12 @@ private struct HomeHeader: View {
                 }
 
                 Spacer()
-
-                HomeAppearanceControl(selection: $appearance)
             }
 
             HStack(spacing: 10) {
                 HeaderMetric(title: mode == .professional ? "Patients" : "Wounds", value: "\(mode == .professional ? patientCount : woundCount)", color: modeAccent)
-                HeaderMetric(title: mode == .professional ? "Needs Review" : "Severe", value: "\(mode == .professional ? needsReviewCount : severeCount)", color: mode == .professional ? .orange : .red)
+                HeaderMetric(title: "Photos", value: "\(photoCount)", color: .blue)
+                HeaderMetric(title: mode == .professional ? "Review" : "Severe", value: "\(mode == .professional ? needsReviewCount : severeCount)", color: mode == .professional ? .orange : .red)
                 HeaderMetric(title: "Mode", value: mode == .professional ? "Pro" : "Consumer", color: mode == .professional ? .indigo : .teal)
             }
         }
@@ -406,6 +365,44 @@ private struct HeaderMetric: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
+    }
+}
+
+private struct HomeModeStatusCard: View {
+    let mode: WoundAppMode
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: mode.systemImage)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(accent)
+                .frame(width: 44, height: 44)
+                .background(accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(mode == .professional ? "Professional workspace" : "Consumer workspace")
+                    .font(.headline)
+                Text(mode.shortDetail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Change care mode in Settings.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(accent)
+            }
+
+            Spacer(minLength: 8)
+        }
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(accent.opacity(0.22), lineWidth: 1)
+        }
+    }
+
+    private var accent: Color {
+        mode == .professional ? .indigo : .teal
     }
 }
 
@@ -539,7 +536,9 @@ private struct MiniTrackStat: View {
 
 private struct PatientHomeOverview: View {
     let items: [SavedMeasurement]
+    let photoCount: Int
     let onNewWound: () -> Void
+    let onPhotoCatalog: () -> Void
     let onImageAnalysis: () -> Void
     let onViewLogs: () -> Void
 
@@ -557,20 +556,23 @@ private struct PatientHomeOverview: View {
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                 CompactStatTile(title: "Saved Wounds", value: "\(items.count)", systemImage: "list.clipboard", color: .blue)
                 CompactStatTile(title: "Latest Score", value: "\(latestSeverity)/20", systemImage: "waveform.path.ecg", color: woundSeverityColor(latestSeverity))
-                CompactStatTile(title: "Body Areas", value: "\(bodyAreaCount)", systemImage: "figure.arms.open", color: .green)
+                CompactStatTile(title: "Photos", value: "\(photoCount)", systemImage: "photo.stack", color: .green)
                 CompactStatTile(title: "Needs Review", value: "\(items.filter { woundSeverity(for: $0) >= 12 }.count)", systemImage: "exclamationmark.triangle", color: .orange)
             }
 
             HomeActionGrid(
                 primaryTitle: "New Wound",
                 primaryIcon: "plus.circle.fill",
-                secondaryTitle: "Upload Image",
-                secondaryIcon: "photo.on.rectangle",
-                tertiaryTitle: "All Wounds",
-                tertiaryIcon: "folder",
+                secondaryTitle: "Photo Log",
+                secondaryIcon: "camera",
+                tertiaryTitle: "Wound AI",
+                tertiaryIcon: "brain.head.profile",
+                quaternaryTitle: "All Wounds",
+                quaternaryIcon: "folder",
                 onPrimary: onNewWound,
-                onSecondary: onImageAnalysis,
-                onTertiary: onViewLogs
+                onSecondary: onPhotoCatalog,
+                onTertiary: onImageAnalysis,
+                onQuaternary: onViewLogs
             )
 
             RecentWoundsSection(
@@ -586,10 +588,12 @@ private struct PatientHomeOverview: View {
 
 private struct ProfessionalHomeOverview: View {
     let items: [SavedMeasurement]
+    let photoCount: Int
     let patientCount: Int
     let severeCount: Int
     let needsReviewCount: Int
     let onAddPatient: () -> Void
+    let onPhotoCatalog: () -> Void
     let onScanPatient: () -> Void
     let onViewLogs: () -> Void
 
@@ -603,7 +607,7 @@ private struct ProfessionalHomeOverview: View {
                 CompactStatTile(title: "Patients", value: "\(patientCount)", systemImage: "person.2", color: .blue)
                 CompactStatTile(title: "Total Wounds", value: "\(items.count)", systemImage: "list.clipboard", color: .green)
                 CompactStatTile(title: "Severe", value: "\(severeCount)", systemImage: "cross.case", color: .red)
-                CompactStatTile(title: "Review", value: "\(needsReviewCount)", systemImage: "stethoscope", color: .orange)
+                CompactStatTile(title: "Photos", value: "\(photoCount)", systemImage: "photo.stack", color: .orange)
             }
 
             HomeActionGrid(
@@ -611,11 +615,14 @@ private struct ProfessionalHomeOverview: View {
                 primaryIcon: "person.badge.plus",
                 secondaryTitle: "Start Scan",
                 secondaryIcon: "viewfinder",
-                tertiaryTitle: "All Wounds",
-                tertiaryIcon: "folder",
+                tertiaryTitle: "Photo Intake",
+                tertiaryIcon: "camera",
+                quaternaryTitle: "All Wounds",
+                quaternaryIcon: "folder",
                 onPrimary: onAddPatient,
                 onSecondary: onScanPatient,
-                onTertiary: onViewLogs
+                onTertiary: onPhotoCatalog,
+                onQuaternary: onViewLogs
             )
 
             RecentWoundsSection(
@@ -644,9 +651,12 @@ private struct HomeActionGrid: View {
     let secondaryIcon: String
     let tertiaryTitle: String
     let tertiaryIcon: String
+    let quaternaryTitle: String?
+    let quaternaryIcon: String?
     let onPrimary: () -> Void
     let onSecondary: () -> Void
     let onTertiary: () -> Void
+    let onQuaternary: (() -> Void)?
 
     private let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 10)
@@ -657,6 +667,9 @@ private struct HomeActionGrid: View {
             WorkflowActionButton(title: primaryTitle, systemImage: primaryIcon, prominence: .primary, action: onPrimary)
             WorkflowActionButton(title: secondaryTitle, systemImage: secondaryIcon, prominence: .secondary, action: onSecondary)
             WorkflowActionButton(title: tertiaryTitle, systemImage: tertiaryIcon, prominence: .secondary, action: onTertiary)
+            if let quaternaryTitle, let quaternaryIcon, let onQuaternary {
+                WorkflowActionButton(title: quaternaryTitle, systemImage: quaternaryIcon, prominence: .secondary, action: onQuaternary)
+            }
         }
     }
 }
@@ -867,7 +880,7 @@ private struct ConsentWelcomeView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Label("Skin tone and body area are stored as context, not as calibration requirements.", systemImage: "checkmark.seal")
+                    Label("Body area and wound context are used for documentation, not calibration.", systemImage: "checkmark.seal")
                     Label("LiDAR/depth measurement can run offline; image analysis is optional.", systemImage: "wifi.slash")
                     Label("Mesh export supports 3D review of visible or covered surfaces.", systemImage: "cube.transparent")
                 }
@@ -1362,6 +1375,271 @@ private struct SelectableChip: View {
             }
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct WoundPhotoCatalogView: View {
+    @ObservedObject var catalog: WoundPhotoCatalogManager
+    let mode: WoundAppMode
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var showCamera = false
+    @State private var selectedItem: PhotosPickerItem?
+    @State private var sharePayload: PhotoSharePayload?
+    @State private var alertMessage: String?
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 158), spacing: 12)
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    PhotoCatalogHeader(mode: mode, count: catalog.items.count)
+
+                    if catalog.items.isEmpty {
+                        ContentUnavailableView(
+                            "No Photos",
+                            systemImage: "camera.metering.center.weighted",
+                            description: Text("Capture or import wound photos to keep a simple visual timeline.")
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 60)
+                    } else {
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(catalog.items) { photo in
+                                PhotoCatalogCard(
+                                    photo: photo,
+                                    imageURL: catalog.imageURL(for: photo),
+                                    onShare: {
+                                        sharePayload = PhotoSharePayload(
+                                            message: catalog.shareText(for: photo),
+                                            url: catalog.imageURL(for: photo)
+                                        )
+                                    },
+                                    onDelete: { catalog.delete(photo) }
+                                )
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Photo Log")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItemGroup(placement: .primaryAction) {
+                    PhotosPicker(selection: $selectedItem, matching: .images) {
+                        Image(systemName: "photo.badge.plus")
+                    }
+                    .accessibilityLabel("Import photo")
+
+                    Button {
+                        showCamera = true
+                    } label: {
+                        Image(systemName: "camera")
+                    }
+                    .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
+                    .accessibilityLabel("Capture photo")
+                }
+            }
+            .onChange(of: selectedItem) { _, item in
+                guard let item else { return }
+                Task {
+                    do {
+                        guard let data = try await item.loadTransferable(type: Data.self),
+                              let image = UIImage(data: data) else {
+                            throw PhotoCatalogError.encodingFailed
+                        }
+                        try catalog.add(image: image)
+                        selectedItem = nil
+                    } catch {
+                        alertMessage = error.localizedDescription
+                    }
+                }
+            }
+            .sheet(isPresented: $showCamera) {
+                CameraCaptureSheet { image in
+                    do {
+                        try catalog.add(image: image)
+                    } catch {
+                        alertMessage = error.localizedDescription
+                    }
+                }
+            }
+            .sheet(item: $sharePayload) { payload in
+                ActivityShareSheet(items: [payload.message, payload.url])
+            }
+            .alert("Photo Log", isPresented: alertPresented) {
+                Button("OK", role: .cancel) { alertMessage = nil }
+            } message: {
+                Text(alertMessage ?? "")
+            }
+        }
+    }
+
+    private var alertPresented: Binding<Bool> {
+        Binding(
+            get: { alertMessage != nil },
+            set: { if !$0 { alertMessage = nil } }
+        )
+    }
+}
+
+private struct PhotoCatalogHeader: View {
+    let mode: WoundAppMode
+    let count: Int
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "photo.stack")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.blue)
+                .frame(width: 44, height: 44)
+                .background(Color.blue.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(mode == .professional ? "Clinical Photo Intake" : "Personal Photo Log")
+                    .font(.headline)
+                Text("Photos stay on this device unless you choose Email/Share on a photo.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            Text("\(count)")
+                .font(.title3.weight(.bold).monospacedDigit())
+                .foregroundStyle(.blue)
+        }
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct PhotoCatalogCard: View {
+    let photo: CatalogedWoundPhoto
+    let imageURL: URL
+    let onShare: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            AsyncImage(url: imageURL) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                case .failure:
+                    Image(systemName: "photo")
+                        .font(.title)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color(.tertiarySystemGroupedBackground))
+                case .empty:
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                @unknown default:
+                    Color(.tertiarySystemGroupedBackground)
+                }
+            }
+            .frame(height: 150)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .background(Color(.tertiarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(photo.displayTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Text(photo.date.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            HStack(spacing: 8) {
+                Button(action: onShare) {
+                    Label("Email/Share", systemImage: "paperplane")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.76)
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Delete photo")
+            }
+            .font(.caption.weight(.semibold))
+        }
+        .padding(10)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct PhotoSharePayload: Identifiable {
+    let id = UUID()
+    let message: String
+    let url: URL
+}
+
+private struct ActivityShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+private struct CameraCaptureSheet: UIViewControllerRepresentable {
+    @Environment(\.dismiss) private var dismiss
+    let onImage: (UIImage) -> Void
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: CameraCaptureSheet
+
+        init(parent: CameraCaptureSheet) {
+            self.parent = parent
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.onImage(image)
+            }
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
+        }
     }
 }
 

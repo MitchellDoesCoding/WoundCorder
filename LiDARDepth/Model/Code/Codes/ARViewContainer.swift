@@ -1650,7 +1650,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             break
         default:
             return (
-                "Move slower and keep textured skin or bandage details in view.",
+                "Move slower and keep wound-surface or bandage details in view.",
                 "Scan complete with limited tracking.",
                 "low"
             )
