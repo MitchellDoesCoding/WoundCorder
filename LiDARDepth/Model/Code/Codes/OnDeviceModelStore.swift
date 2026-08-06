@@ -282,7 +282,7 @@ final class OnDeviceModelStore: NSObject, ObservableObject {
             in: .userDomainMask
         )[0]
         return applicationSupport
-            .appendingPathComponent("WoundCorder", isDirectory: true)
+            .appendingPathComponent("WoundScope", isDirectory: true)
             .appendingPathComponent("Models", isDirectory: true)
     }
 

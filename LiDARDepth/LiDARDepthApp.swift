@@ -4,7 +4,7 @@ import SwiftUI
 struct LiDARDepthApp: App {
     var body: some Scene {
         WindowGroup {
-            WoundCorderLaunchView()
+            WoundScopeLaunchView()
         }
     }
 }

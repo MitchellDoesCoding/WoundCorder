@@ -259,7 +259,7 @@ struct ARCameraTabView: View {
 
     private func analysisMetadata(mode: WoundAppMode) -> [String: String] {
         var metadata = selectedComorbidities?.asDictionary() ?? [:]
-        metadata["woundcorder_mode"] = mode.rawValue
+        metadata["woundscope_mode"] = mode.rawValue
         metadata["audience"] = mode == .professional ? "professional" : "consumer"
         metadata["output_format"] = "strict_json_with_summary_html"
         metadata["prompt"] = mode.analysisPrompt

@@ -241,7 +241,7 @@ struct ContentView: View {
 
     private var shareSummary: String {
         var lines = [
-            "Woundcorder scan",
+            "WoundScope scan",
             "Patient: \(patientProfile.displayName)",
             "Body area: \(woundIntake.laterality.rawValue) \(woundIntake.bodyArea.rawValue)",
             "Date wounded: \(woundIntake.dateWounded.rawValue)",

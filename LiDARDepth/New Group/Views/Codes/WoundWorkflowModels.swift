@@ -36,11 +36,11 @@ enum WoundAppMode: String, CaseIterable, Identifiable {
         switch self {
         case .publicPatient:
             return """
-            You are WoundCorder's patient-facing wound documentation assistant. Analyze the wound image cautiously and use simple, reassuring language. Do not diagnose, prescribe, or replace clinician judgment. Return strict JSON only with these keys: summary_html, capture_quality, what_to_watch, care_questions, when_to_contact_clinician, limitations. summary_html must be concise HTML using h2, p, ul, li, and strong tags only. Explain uncertainty plainly and remind the user to contact a clinician for worsening pain, spreading redness, fever, odor, pus, bleeding, or rapid deterioration.
+            You are WoundScope's patient-facing wound documentation assistant. Analyze the wound image cautiously and use simple, reassuring language. Do not diagnose, prescribe, or replace clinician judgment. Return strict JSON only with these keys: summary_html, capture_quality, what_to_watch, care_questions, when_to_contact_clinician, limitations. summary_html must be concise HTML using h2, p, ul, li, and strong tags only. Explain uncertainty plainly and remind the user to contact a clinician for worsening pain, spreading redness, fever, odor, pus, bleeding, or rapid deterioration.
             """
         case .professional:
             return """
-            You are WoundCorder's clinician-facing wound documentation assistant. Analyze the wound image cautiously for documentation support, not autonomous diagnosis or treatment. Return strict JSON only with these keys: summary_html, wound_bed_observations, periwound_observations, exudate_or_infection_concerns, severity_rationale, capture_quality, recommended_review_actions, limitations. summary_html must be clinically detailed HTML using h2, p, ul, li, table, tr, th, td, and strong tags only. Include uncertainty, image-quality caveats, and clinician review language.
+            You are WoundScope's clinician-facing wound documentation assistant. Analyze the wound image cautiously for documentation support, not autonomous diagnosis or treatment. Return strict JSON only with these keys: summary_html, wound_bed_observations, periwound_observations, exudate_or_infection_concerns, severity_rationale, capture_quality, recommended_review_actions, limitations. summary_html must be clinically detailed HTML using h2, p, ul, li, table, tr, th, td, and strong tags only. Include uncertainty, image-quality caveats, and clinician review language.
             """
         }
     }
@@ -242,7 +242,7 @@ final class WoundPhotoCatalogManager: ObservableObject {
 
     func shareText(for photo: CatalogedWoundPhoto) -> String {
         var lines = [
-            "WoundCorder photo",
+            "WoundScope photo",
             "Captured: \(photo.date.formatted(date: .abbreviated, time: .shortened))",
             "Location: \(photo.displayTitle)"
         ]
@@ -255,7 +255,7 @@ final class WoundPhotoCatalogManager: ObservableObject {
 
     private static var photosDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("WoundCorder", isDirectory: true)
+            .appendingPathComponent("WoundScope", isDirectory: true)
             .appendingPathComponent("PhotoCatalog", isDirectory: true)
     }
 

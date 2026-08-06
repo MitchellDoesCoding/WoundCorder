@@ -132,7 +132,7 @@ private struct ARViewControllerHost: UIViewControllerRepresentable {
 #endif
 
 // Disambiguate LiDARVolumeCalculator across possible modules
-// Prefer WoundCorder when the compile flag USE_WOUNDCORDER_VOLUME is set.
+// Prefer the packaged volume module when the compile flag USE_WOUNDCORDER_VOLUME is set.
 #if canImport(WoundCorder)
 #if USE_WOUNDCORDER_VOLUME
 import WoundCorder
@@ -142,7 +142,7 @@ private typealias VolumeCalculatorType = WoundCorder.LiDARVolumeCalculator
 private typealias VolumeCalculatorType = LiDARVolumeCalculator
 #endif
 #else
-// If WoundCorder is not available, use the local project LiDARVolumeCalculator
+// If the packaged module is not available, use the local project LiDARVolumeCalculator.
 private typealias VolumeCalculatorType = LiDARVolumeCalculator
 #endif
 
@@ -307,8 +307,8 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     // Keep display link strongly so it does not disappear mid-flight.
     private var displayLink: CADisplayLink?
     // Dedicated queue for Vision segmentation
-    private let segmentationQueue = DispatchQueue(label: "ai.woundcorder.segmentation")
-    private let meshUpdateQueue = DispatchQueue(label: "ai.woundcorder.meshUpdate", qos: .userInitiated)
+    private let segmentationQueue = DispatchQueue(label: "ai.woundscope.segmentation")
+    private let meshUpdateQueue = DispatchQueue(label: "ai.woundscope.meshUpdate", qos: .userInitiated)
     
     // Last tracking HUD shown timestamp to prevent repeated messages
     private var lastTrackingHUDShownAt: CFTimeInterval = 0

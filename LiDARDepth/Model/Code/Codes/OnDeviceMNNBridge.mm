@@ -22,7 +22,7 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _inferenceQueue = dispatch_queue_create("com.woundcorder.mnn-inference", DISPATCH_QUEUE_SERIAL);
+        _inferenceQueue = dispatch_queue_create("com.woundscope.mnn-inference", DISPATCH_QUEUE_SERIAL);
     }
     return self;
 }
@@ -61,7 +61,7 @@
                 return;
             }
 
-            NSString *cacheRoot = [NSTemporaryDirectory() stringByAppendingPathComponent:@"WoundCorder-MNN"];
+            NSString *cacheRoot = [NSTemporaryDirectory() stringByAppendingPathComponent:@"WoundScope-MNN"];
             NSError *directoryError = nil;
             [[NSFileManager defaultManager] createDirectoryAtPath:cacheRoot
                                       withIntermediateDirectories:YES

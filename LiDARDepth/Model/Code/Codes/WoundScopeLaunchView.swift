@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-struct WoundCorderLaunchView: View {
+struct WoundScopeLaunchView: View {
     @State private var isShowingSplash = true
 
     var body: some View {
@@ -30,18 +30,18 @@ struct WoundCorderLaunchView: View {
             Color(red: 0.08, green: 0.10, blue: 0.24)
                 .ignoresSafeArea()
 
-            if let logo = UIImage(named: "WoundCorder (1)") {
+            if let logo = UIImage(named: "WoundScope") {
                 Image(uiImage: logo)
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: 420)
                     .padding(.horizontal, 24)
-                    .accessibilityLabel("WoundCorder")
+                    .accessibilityLabel("WoundScope")
             }
         }
     }
 }
 
 #Preview {
-    WoundCorderLaunchView()
+    WoundScopeLaunchView()
 }

@@ -28,15 +28,15 @@ struct RootView: View {
     @State private var selectedPrescriptionItem: PhotosPickerItem?
 
     private func logoImage() -> Image? {
-        if let ui = UIImage(named: "WoundCorder (1)") {
+        if let ui = UIImage(named: "WoundScope") {
             return Image(uiImage: ui)
         }
-        if let url = Bundle.main.url(forResource: "WoundCorder (1)", withExtension: "png"),
+        if let url = Bundle.main.url(forResource: "WoundScope", withExtension: "png"),
            let data = try? Data(contentsOf: url),
            let ui = UIImage(data: data) {
             return Image(uiImage: ui)
         }
-        if let url = Bundle.main.url(forResource: "WoundCorder (1)", withExtension: "png", subdirectory: "LiDARDepth/Model/Code/Codes"),
+        if let url = Bundle.main.url(forResource: "WoundScope", withExtension: "png", subdirectory: "LiDARDepth/Model/Code/Codes"),
            let data = try? Data(contentsOf: url),
            let ui = UIImage(data: data) {
             return Image(uiImage: ui)
@@ -57,7 +57,7 @@ struct RootView: View {
                     .padding(.vertical, 18)
                 }
                 .background(HomeFlowBackground(mode: selectedMode))
-                .navigationTitle(screen == .home ? "Woundcorder" : "New Wound")
+                .navigationTitle(screen == .home ? "WoundScope" : "New Wound")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
