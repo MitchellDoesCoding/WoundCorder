@@ -19,6 +19,7 @@ final class MeasurementLogManager: ObservableObject {
         area: Float,
         volume: Float,
         severity: Int? = nil,
+        patientID: UUID? = nil,
         patientName: String? = nil,
         bodyArea: String? = nil,
         laterality: String? = nil
@@ -29,6 +30,7 @@ final class MeasurementLogManager: ObservableObject {
             area: area,
             volume: volume,
             severity: severity,
+            patientID: patientID,
             patientName: patientName,
             bodyArea: bodyArea,
             laterality: laterality

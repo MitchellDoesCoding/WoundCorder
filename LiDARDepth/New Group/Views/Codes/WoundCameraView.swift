@@ -73,6 +73,7 @@ struct WoundCameraView: View {
         }
         .sheet(isPresented: $showMeasurement) {
             ContentView()
+                .environmentObject(MeasurementLogManager())
         }
     }
     

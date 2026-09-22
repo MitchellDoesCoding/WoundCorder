@@ -11,7 +11,7 @@ enum WoundAppMode: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .publicPatient: return "Consumer"
+        case .publicPatient: return "Patient"
         case .professional: return "Professional"
         }
     }
@@ -88,6 +88,24 @@ enum Laterality: String, CaseIterable, Identifiable {
 
 enum BodyArea: String, CaseIterable, Identifiable {
     case head = "Head"
+    case neck = "Neck"
+    case shoulder = "Shoulder"
+    case upperArm = "Upper Arm"
+    case elbow = "Elbow"
+    case forearm = "Forearm"
+    case wrist = "Wrist"
+    case hand = "Hand"
+    case chest = "Chest"
+    case abdomen = "Abdomen"
+    case hip = "Hip / Pelvis"
+    case thigh = "Thigh"
+    case knee = "Knee"
+    case lowerLeg = "Lower Leg"
+    case ankle = "Ankle"
+    case foot = "Foot"
+
+    // Legacy broad regions remain decodable/displayable so existing measurements and
+    // catalog entries are not silently renamed or assigned false precision.
     case upperLimbs = "Upper Limbs"
     case torso = "Torso"
     case lowerLimbs = "Lower Limbs"
@@ -97,9 +115,37 @@ enum BodyArea: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    static let selectableCases: [BodyArea] = [
+        .head, .neck,
+        .shoulder, .upperArm, .elbow, .forearm, .wrist, .hand,
+        .chest, .abdomen, .hip,
+        .thigh, .knee, .lowerLeg, .ankle, .foot
+    ]
+
+    static let selectionGroups: [BodyAreaSelectionGroup] = [
+        BodyAreaSelectionGroup(title: "Head & torso", areas: [.head, .neck, .chest, .abdomen, .hip]),
+        BodyAreaSelectionGroup(title: "Arm & hand", areas: [.shoulder, .upperArm, .elbow, .forearm, .wrist, .hand]),
+        BodyAreaSelectionGroup(title: "Leg & foot", areas: [.thigh, .knee, .lowerLeg, .ankle, .foot])
+    ]
+
     var systemImage: String {
         switch self {
         case .head: return "person.crop.circle"
+        case .neck: return "figure.stand"
+        case .shoulder: return "figure.arms.open"
+        case .upperArm: return "figure.strengthtraining.traditional"
+        case .elbow: return "figure.flexibility"
+        case .forearm: return "figure.arms.open"
+        case .wrist: return "hand.raised"
+        case .hand: return "hand.raised.fill"
+        case .chest: return "lungs.fill"
+        case .abdomen: return "figure.core.training"
+        case .hip: return "figure.walk"
+        case .thigh: return "figure.walk"
+        case .knee: return "figure.flexibility"
+        case .lowerLeg: return "figure.walk"
+        case .ankle: return "figure.walk.motion"
+        case .foot: return "shoeprints.fill"
         case .upperLimbs: return "figure.arms.open"
         case .torso: return "figure.core.training"
         case .lowerLimbs: return "figure.walk"
@@ -108,6 +154,13 @@ enum BodyArea: String, CaseIterable, Identifiable {
         case .joints: return "figure.flexibility"
         }
     }
+}
+
+struct BodyAreaSelectionGroup: Identifiable {
+    let title: String
+    let areas: [BodyArea]
+
+    var id: String { title }
 }
 
 enum WoundContext: String, CaseIterable, Identifiable {
@@ -149,7 +202,7 @@ struct PatientProfile: Equatable {
 
 struct WoundIntakeData: Equatable {
     var laterality: Laterality = .right
-    var bodyArea: BodyArea = .lowerLimbs
+    var bodyArea: BodyArea = .lowerLeg
     var contexts: Set<WoundContext> = []
     var dateWounded: WoundedDateOption = .today
     var notes: String = ""

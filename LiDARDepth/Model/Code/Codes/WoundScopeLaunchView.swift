@@ -6,7 +6,7 @@ struct WoundScopeLaunchView: View {
 
     var body: some View {
         ZStack {
-            RootView()
+            WoundScopeAppShell()
                 .opacity(isShowingSplash ? 0 : 1)
                 .allowsHitTesting(!isShowingSplash)
 

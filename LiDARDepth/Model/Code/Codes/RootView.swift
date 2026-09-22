@@ -780,16 +780,10 @@ private struct WoundSummaryCard: View {
     }
 
     private var bodyAreaIcon: String {
-        switch item.bodyArea {
-        case BodyArea.head.rawValue: return BodyArea.head.systemImage
-        case BodyArea.upperLimbs.rawValue: return BodyArea.upperLimbs.systemImage
-        case BodyArea.torso.rawValue: return BodyArea.torso.systemImage
-        case BodyArea.lowerLimbs.rawValue: return BodyArea.lowerLimbs.systemImage
-        case BodyArea.hands.rawValue: return BodyArea.hands.systemImage
-        case BodyArea.feet.rawValue: return BodyArea.feet.systemImage
-        case BodyArea.joints.rawValue: return BodyArea.joints.systemImage
-        default: return "bandage"
-        }
+        guard let stored = item.bodyArea else { return "bandage" }
+        return BodyArea.allCases.first {
+            $0.rawValue.caseInsensitiveCompare(stored) == .orderedSame
+        }?.systemImage ?? "bandage"
     }
 }
 
@@ -1010,7 +1004,7 @@ private struct WoundImageSection: View {
                 .pickerStyle(.segmented)
 
                 LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(BodyArea.allCases) { area in
+                    ForEach(BodyArea.selectableCases) { area in
                         SelectableChip(
                             title: area.rawValue,
                             systemImage: area.systemImage,

@@ -8,6 +8,7 @@ struct SavedMeasurement: Identifiable, Codable, Equatable {
     let area: Float
     let volume: Float
     let severity: Int?
+    let patientID: UUID?
     let patientName: String?
     let bodyArea: String?
     let laterality: String?
@@ -20,6 +21,7 @@ struct SavedMeasurement: Identifiable, Codable, Equatable {
         area: Float,
         volume: Float,
         severity: Int? = nil,
+        patientID: UUID? = nil,
         patientName: String? = nil,
         bodyArea: String? = nil,
         laterality: String? = nil
@@ -31,6 +33,7 @@ struct SavedMeasurement: Identifiable, Codable, Equatable {
         self.area = area
         self.volume = volume
         self.severity = severity
+        self.patientID = patientID
         self.patientName = patientName
         self.bodyArea = bodyArea
         self.laterality = laterality
