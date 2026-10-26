@@ -21,11 +21,13 @@ private enum AutomaticMeasurementPhase: Equatable {
 }
 
 struct ContentView: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     let patientID: UUID?
     let patientProfile: PatientProfile
     let woundIntake: WoundIntakeData
     let onMeasurementSaved: () -> Void
 
+    @State private var notificationScope = NSObject()
     @StateObject private var metricsManager = MetricsManager()
     @EnvironmentObject private var logManager: MeasurementLogManager
 
@@ -36,10 +38,18 @@ struct ContentView: View {
     @State private var showManualControls = false
     @State private var scanQuality: ScanQuality = .waiting
     @State private var isPreliminary = true
+    @State private var latestEstimateIsPreliminary = true
     @State private var isMeasurementFinalized = false
     @State private var hasSavedMeasurement = false
     @State private var isShowingSaveConfirmation = false
     @State private var isShowingSaveSuccess = false
+    @State private var measurementID = UUID()
+    @State private var measurementCompletedAt: Date?
+    @State private var analysisContext: WoundAnalysisContext?
+    @State private var capturedMeasurement: WoundAnalysisContext?
+    @State private var showingAnalysis = false
+    @State private var showingMeasurementDetails = false
+    @State private var confirmSaveAfterDetails = false
     @State private var scanInstruction = "Point the camera at the wound."
     @State private var scanProgress: Double = 0
     @State private var segmentationVolumeApplied = false
@@ -80,39 +90,35 @@ struct ContentView: View {
                 bottomOutlinePoints: $bottomOutlinePoints,
                 metricsManager: metricsManager,
                 selectedDepthPoint: $selectedDepthPoint,
-                onMeasurementState: handleMeasurementState
+                onMeasurementState: handleMeasurementState,
+                notificationScope: notificationScope
             )
             .ignoresSafeArea()
             .onAppear(perform: configureScan)
             .onReceive(autoDetectFinishedNotification) { notification in
+                guard (notification.object as? NSObject) === notificationScope else { return }
                 applyAutoDetection(notification)
             }
             .onReceive(liDARScanStatusNotification) { notification in
+                guard (notification.object as? NSObject) === notificationScope else { return }
                 applyLiDARScanStatus(notification)
             }
             .onReceive(metricsUpdatedNotification) { notification in
+                guard (notification.object as? NSObject) === notificationScope else { return }
                 applyMetricsUpdate(notification)
             }
             .onReceive(manualOutlineStateNotification) { notification in
+                guard (notification.object as? NSObject) === notificationScope else { return }
                 applyManualOutlineState(notification)
             }
 
             VStack(spacing: 0) {
+                if let error = logManager.storageError {
+                    WoundStorageRecoveryView(message: error, canRestore: logManager.canRestorePrevious, reload: logManager.reload, restore: logManager.restorePrevious).padding().background(.regularMaterial)
+                }
                 scanHeader
                     .padding(.horizontal, 14)
                     .padding(.top, 12)
-
-                if hasMeasurement {
-                    DimensionOverlay(
-                        area: metricsManager.area,
-                        depth: estimatedDepthCM,
-                        bodyArea: woundIntake.bodyArea,
-                        laterality: woundIntake.laterality
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
-                    .padding(.top, 8)
-                }
 
                 Spacer()
 
@@ -129,30 +135,33 @@ struct ContentView: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 10)
 
-                ScanResultsPanel(
-                    metrics: metricsManager.metrics,
-                    severity: severityScore,
-                    depthCM: estimatedDepthCM,
-                    scanQuality: scanQuality,
-                    isPreliminary: isPreliminary,
-                    segmentationVolumeApplied: segmentationVolumeApplied,
-                    volumeSourceText: volumeSourceText,
-                    patientName: patientProfile.displayName,
-                    canSave: hasMeasurement && isMeasurementFinalized,
-                    isSaved: hasSavedMeasurement,
-                    shareText: shareSummary,
-                    onSave: { isShowingSaveConfirmation = true }
-                )
+                if automaticPhase == .complete || isMeasurementFinalized {
+                    completedMeasurementCard
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 10)
+                }
+
+                Button {
+                    continueToAnalysis()
+                } label: {
+                    Label(WoundL10n.text(canAttachMeasurements ? "Continue to AI with measurements" :
+                          (automaticPhase == .finalizing ? "Finalizing measurements…" :
+                           (automaticPhase == .complete ? "Continue to AI without measurements" : "Skip measurement · Go to AI"))),
+                          systemImage: canAttachMeasurements ? "checkmark.circle.fill" : "arrow.right")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(automaticPhase == .finalizing)
                 .padding(.horizontal, 14)
                 .padding(.bottom, 10)
 
+                if !showManualControls && !canAttachMeasurements {
                 ScanControlsBar(
                     isDetecting: isDetecting,
-                    hasSegmentation: hasSegmentation,
                     automaticPhase: automaticPhase,
                     canConfirmWound: canConfirmWound,
                     canFinishPointCapture: canFinishPointCapture,
-                    showManualControls: $showManualControls,
                     onStartScan: startLiDARScan,
                     onConfirmWound: confirmMappedWound,
                     onFinishCapture: finishPointCapture,
@@ -160,8 +169,16 @@ struct ContentView: View {
                 )
                 .padding(.horizontal, 14)
                 .padding(.bottom, 18)
+                }
 
                 if showManualControls {
+                    Button(action: startLiDARScan) {
+                        Label(WoundL10n.text("Switch to Auto Detect"), systemImage: "viewfinder")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityHint(WoundL10n.text("Discards the current trace and starts automatic wound detection"))
                     ManualRefinementBar(
                         phase: manualPhase,
                         pointCount: manualPointCount,
@@ -179,34 +196,72 @@ struct ContentView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingMeasurementDetails, onDismiss: {
+            if confirmSaveAfterDetails {
+                confirmSaveAfterDetails = false
+                isShowingSaveConfirmation = true
+            }
+        }) {
+            NavigationStack {
+                ScrollView {
+                    ScanResultsPanel(
+                        metrics: displayedMetrics, depthCM: estimatedDepthCM,
+                        scanQuality: scanQuality, isPreliminary: isPreliminary,
+                        segmentationVolumeApplied: segmentationVolumeApplied,
+                        volumeSourceText: volumeSourceText, patientName: patientProfile.displayName,
+                        canSave: hasMeasurement && isMeasurementFinalized,
+                        isSaved: hasSavedMeasurement, shareText: shareSummary,
+                        onSave: {
+                            confirmSaveAfterDetails = true
+                            showingMeasurementDetails = false
+                        }
+                    ).padding()
+                }
+                .navigationTitle(WoundL10n.text("Measurement"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) {
+                    Button(WoundL10n.text("Done")) { showingMeasurementDetails = false }
+                } }
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .fullScreenCover(isPresented: $showingAnalysis) {
+            ARCameraTabView(onFinish: saveMeasurementBeforeLeaving, measurementContext: analysisContext, patientID: patientID, patientName: patientProfile.displayName, patientProfile: patientProfile, woundIntake: woundIntake)
+                .environmentObject(logManager)
+        }
+        .onChange(of: isMeasurementFinalized) { _, finalized in
+            if finalized { measurementCompletedAt = Date() }
+            else { measurementCompletedAt = nil; measurementID = UUID() }
+        }
         .statusBarHidden(true)
-        .confirmationDialog(
-            "Confirm this measurement?",
+        .confirmationDialog(WoundL10n.text(
+            "Confirm this measurement?"),
             isPresented: $isShowingSaveConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Save to \(patientProfile.displayName)") {
+            Button(WoundL10n.text("Save to \(patientProfile.displayName)")) {
                 saveMeasurement()
             }
-            Button("Cancel", role: .cancel) {}
+            Button(WoundL10n.text("Cancel"), role: .cancel) {}
         } message: {
-            Text(
+            Text(WoundL10n.text(
                 String(
                     format: "Area %.2f cm² • Volume %.2f cm³\n%@ %@",
-                    metricsManager.area,
-                    metricsManager.volume,
+                    displayedMetrics.area,
+                    displayedMetrics.volume,
                     woundIntake.laterality.rawValue,
                     woundIntake.bodyArea.rawValue
                 )
-            )
+            ))
         }
-        .alert("Measurement Saved", isPresented: $isShowingSaveSuccess) {
-            Button("Done") {
+        .alert(WoundL10n.text("Measurement Saved"), isPresented: $isShowingSaveSuccess) {
+            Button(WoundL10n.text("Continue to AI with measurements")) { continueToAnalysis() }
+            Button(WoundL10n.text("Done")) {
                 onMeasurementSaved()
                 dismiss()
             }
         } message: {
-            Text("This measurement was saved to \(patientProfile.displayName)'s record.")
+            Text(WoundL10n.text("This measurement was saved to \(patientProfile.displayName)'s record."))
         }
     }
 
@@ -215,20 +270,20 @@ struct ContentView: View {
             Button {
                 dismiss()
             } label: {
-                Label("Back", systemImage: "chevron.left")
+                Label(WoundL10n.text("Back"), systemImage: "chevron.left")
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 10)
-                    .frame(height: 38)
+                    .frame(minHeight: 44)
                     .background(.ultraThinMaterial, in: Capsule())
             }
             .buttonStyle(.plain)
-            .accessibilityHint("Returns to the wound location review")
+            .accessibilityHint(WoundL10n.text("Returns to the wound location review"))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(patientProfile.displayName)
                     .font(.headline)
                     .lineLimit(1)
-                Text("\(woundIntake.laterality.rawValue) \(woundIntake.bodyArea.rawValue) • \(woundIntake.dateWounded.rawValue)")
+                Text(WoundL10n.text("\(woundIntake.laterality.rawValue) \(woundIntake.bodyArea.rawValue) • \(woundIntake.dateWounded.rawValue)"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -236,22 +291,92 @@ struct ContentView: View {
 
             Spacer()
 
-            ScanQualityPill(quality: scanQuality, isDetecting: isDetecting)
+            Menu {
+                Button(WoundL10n.text("Restart camera"), systemImage: "arrow.clockwise") {
+                    NotificationCenter.default.post(name: Notification.Name("RestartWoundCamera"), object: notificationScope)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle").frame(width: 44, height: 44)
+            }
+            .accessibilityLabel(WoundL10n.text("Camera options"))
         }
         .padding(10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private var severityScore: Int {
-        WoundSeverityScorer.score(area: metricsManager.area, volume: metricsManager.volume)
+
+
+    private var canAttachMeasurements: Bool { capturedMeasurement != nil }
+
+    private func continueToAnalysis() {
+        analysisContext = canAttachMeasurements ? currentMeasurementContext : nil
+        showingAnalysis = true
     }
 
-    private var estimatedDepthCM: Float {
-        WoundSeverityScorer.depthCM(area: metricsManager.area, volume: metricsManager.volume)
+    private var completedMeasurementCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(WoundL10n.text(canAttachMeasurements ? "Measurements captured" : "Scan needs another pass"),
+                  systemImage: canAttachMeasurements ? "checkmark.circle.fill" : "exclamationmark.circle")
+                .font(.headline)
+                .foregroundStyle(canAttachMeasurements ? Color.green : Color.orange)
+            if hasMeasurement {
+                HStack(spacing: 6) {
+                    ResultMetric(title: "Area", value: String(format: "%.2f", displayedMetrics.area), unit: "cm²")
+                    ResultMetric(title: "Volume", value: String(format: "%.2f", displayedMetrics.volume), unit: "cm³")
+                    ResultMetric(title: "Mean depth", value: estimatedDepthCM.map { String(format: "%.2f", $0) } ?? "—", unit: "cm")
+                }
+            }
+            Text(WoundL10n.text(canAttachMeasurements
+                 ? "These measurements will be attached to your AI photo check. Mean depth is estimated from volume ÷ area."
+                 : "Any values shown are provisional. Scan again to attach measurements, or continue with a photo only."))
+                .font(.caption).foregroundStyle(.secondary)
+            if canAttachMeasurements && isPreliminary {
+                Text(WoundL10n.text("Preliminary estimate · Capture quality: \(scanQuality.title)"))
+                    .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+            }
+            HStack {
+                if hasMeasurement {
+                    Button(WoundL10n.text(hasSavedMeasurement ? "View saved measurements" : "Details & save")) {
+                        showingMeasurementDetails = true
+                    }
+                    .frame(minHeight: 44)
+                }
+                Spacer()
+                if canAttachMeasurements {
+                    Button(WoundL10n.text("Measure again"), action: startLiDARScan).frame(minHeight: 44)
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+        }
+        .padding(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var estimatedDepthCM: Float? {
+        guard displayedMetrics.area.isFinite, displayedMetrics.volume.isFinite,
+              displayedMetrics.area > 0, displayedMetrics.volume > 0 else { return nil }
+        return WoundMeasurementMath.depthCM(area: displayedMetrics.area, volume: displayedMetrics.volume)
     }
 
     private var hasMeasurement: Bool {
-        metricsManager.area > 0 || metricsManager.volume > 0
+        displayedMetrics.area.isFinite && displayedMetrics.area > 0 && displayedMetrics.perimeter.isFinite && displayedMetrics.perimeter > 0 && displayedMetrics.volume.isFinite && displayedMetrics.volume >= 0
+    }
+    private var displayedMetrics: (perimeter: Float, area: Float, volume: Float) {
+        if let capturedMeasurement {
+            return (capturedMeasurement.perimeterCM, capturedMeasurement.areaCM2, capturedMeasurement.volumeCM3)
+        }
+        return metricsManager.metrics
+    }
+
+    private var currentMeasurementContext: WoundAnalysisContext {
+        capturedMeasurement ?? liveMeasurementContext
+    }
+
+    private var liveMeasurementContext: WoundAnalysisContext {
+        WoundAnalysisContext(id: measurementID, capturedAt: measurementCompletedAt ?? Date(),
+            perimeterCM: displayedMetrics.perimeter, areaCM2: displayedMetrics.area, volumeCM3: displayedMetrics.volume,
+            volumeSource: volumeSourceText, quality: scanQuality.title, isPreliminary: isPreliminary,
+            bodyArea: woundIntake.bodyArea.rawValue, laterality: woundIntake.laterality.rawValue)
     }
 
     private var hasSegmentation: Bool {
@@ -260,16 +385,16 @@ struct ContentView: View {
 
     private var shareSummary: String {
         var lines = [
-            "WoundScope scan",
+            "WoundCorder scan",
             "Patient: \(patientProfile.displayName)",
             "Body area: \(woundIntake.laterality.rawValue) \(woundIntake.bodyArea.rawValue)",
             "Date wounded: \(woundIntake.dateWounded.rawValue)",
-            "Severity: \(severityScore)/20",
             "Capture quality: \(scanQuality.title)",
             "Volume source: \(volumeSourceText)",
-            String(format: "Area: %.2f cm²", metricsManager.area),
-            String(format: "Volume: %.2f cm³", metricsManager.volume),
-            String(format: "Depth: %.2f cm", estimatedDepthCM)
+            String(format: "Area: %.2f cm²", displayedMetrics.area),
+            String(format: "Volume: %.2f cm³", displayedMetrics.volume),
+            estimatedDepthCM.map { String(format: "Estimated mean depth: %.2f cm (volume ÷ area)", $0) }
+                ?? "Estimated mean depth: unavailable"
         ]
 
         if !woundIntake.contexts.isEmpty {
@@ -289,9 +414,11 @@ struct ContentView: View {
     }
 
     private func configureScan() {
-        NotificationCenter.default.post(name: NSNotification.Name("ARHideOverlays"), object: nil)
-        NotificationCenter.default.post(name: NSNotification.Name("DisableAutoSegmentation"), object: nil)
-        NotificationCenter.default.post(name: NSNotification.Name("EnableContinuousScanning"), object: nil)
+        // Returning from AI analysis must not restart or overwrite the completed scan.
+        guard !isMeasurementFinalized else { return }
+        NotificationCenter.default.post(name: NSNotification.Name("ARHideOverlays"), object: notificationScope)
+        NotificationCenter.default.post(name: NSNotification.Name("DisableAutoSegmentation"), object: notificationScope)
+        NotificationCenter.default.post(name: NSNotification.Name("EnableContinuousScanning"), object: notificationScope)
         automaticPhase = .ready
         scanInstruction = "LiDAR view ready. Center the wound, then tap Map Wound."
     }
@@ -300,6 +427,7 @@ struct ContentView: View {
         if let typed = state as? ARViewController.MeasurementState {
             // A high-quality live frame is still provisional until the scan's
             // explicit completion event accepts the multi-frame consensus.
+            latestEstimateIsPreliminary = typed.isPreliminary
             isPreliminary = !isMeasurementFinalized || typed.isPreliminary
             switch typed.confidence {
             case .high:
@@ -341,10 +469,10 @@ struct ContentView: View {
         }
 
         isDetecting = false
-        if metricsManager.volume > 0 {
+        if displayedMetrics.volume > 0 {
             scanQuality = maxQuality(scanQuality, .medium)
             scanInstruction = "Measurement captured. Review the result before saving."
-        } else if metricsManager.area > 0 {
+        } else if displayedMetrics.area > 0 {
             scanQuality = maxQuality(scanQuality, .medium)
             scanInstruction = "Area found. Tilt slightly around the wound for better depth."
         } else if didReceiveSegmentation {
@@ -388,9 +516,10 @@ struct ContentView: View {
             isMeasurementFinalized = measurementReady
             if measurementReady {
                 isDetecting = false
-                isPreliminary = false
+                isPreliminary = latestEstimateIsPreliminary
                 showManualControls = false
             } else {
+                capturedMeasurement = nil
                 isPreliminary = true
             }
         }
@@ -421,6 +550,10 @@ struct ContentView: View {
         if let source = userInfo["volumeSource"] as? String {
             volumeSourceText = source
         }
+        if finalReadiness == true, hasMeasurement {
+            measurementCompletedAt = Date()
+            capturedMeasurement = liveMeasurementContext
+        }
     }
 
     private func applyMetricsUpdate(_ notification: Notification) {
@@ -428,8 +561,8 @@ struct ContentView: View {
         // Numeric values arrive through ARViewContainer's direct callback. This
         // notification carries source/quality metadata only, avoiding a duplicate
         // three-property SwiftUI update for every live sample.
-        let area = metricsManager.area
-        let volume = metricsManager.volume
+        let area = displayedMetrics.area
+        let volume = displayedMetrics.volume
         if let source = userInfo["volumeSource"] as? String {
             volumeSourceText = source
         }
@@ -461,6 +594,7 @@ struct ContentView: View {
         isDetecting = true
         isPreliminary = true
         isMeasurementFinalized = false
+        capturedMeasurement = nil
         hasSavedMeasurement = false
         scanQuality = .scanning
         scanProgress = 0
@@ -468,8 +602,8 @@ struct ContentView: View {
         volumeSourceText = "Mapping wound boundary"
         scanInstruction = "Step 1 of 2: Hold steady while the wound edge is mapped."
         metricsManager.resetMetrics()
-        NotificationCenter.default.post(name: NSNotification.Name("EnableContinuousScanning"), object: nil)
-        NotificationCenter.default.post(name: NSNotification.Name("StartVolumetricLiDARScan"), object: nil)
+        NotificationCenter.default.post(name: NSNotification.Name("EnableContinuousScanning"), object: notificationScope)
+        NotificationCenter.default.post(name: NSNotification.Name("StartVolumetricLiDARScan"), object: notificationScope)
     }
 
     private func confirmMappedWound() {
@@ -482,7 +616,7 @@ struct ContentView: View {
         scanInstruction = "Step 2 of 2: Move slowly around the wound while the green point cloud fills in."
         NotificationCenter.default.post(
             name: NSNotification.Name("ConfirmAutomaticWoundBoundary"),
-            object: nil
+            object: notificationScope
         )
     }
 
@@ -493,7 +627,7 @@ struct ContentView: View {
         scanInstruction = "Finalizing the confirmed wound point cloud…"
         NotificationCenter.default.post(
             name: NSNotification.Name("FinishAutomaticPointCapture"),
-            object: nil
+            object: notificationScope
         )
     }
 
@@ -506,35 +640,36 @@ struct ContentView: View {
         manualPointCount = 0
         manualCanFinish = false
         manualCanUndo = false
-        manualHasDetectedSeed = hasSegmentation
+        manualHasDetectedSeed = false
         manualValidationMessage = ""
         isDetecting = true
         isPreliminary = true
         isMeasurementFinalized = false
+        capturedMeasurement = nil
         hasSavedMeasurement = false
         scanQuality = .scanning
         scanProgress = 0
         metricsManager.resetMetrics()
         segmentationVolumeApplied = false
-        volumeSourceText = "Manual correction in progress"
-        scanInstruction = hasSegmentation
-            ? "Existing edge shown. Trace to replace it, or tap Next to keep it."
-            : "Trace once around the wound edge, then tap Next."
-        NotificationCenter.default.post(name: NSNotification.Name("StartGuidedWoundMeasurement"), object: nil)
+        volumeSourceText = "Manual tracing in progress"
+        scanInstruction = "Trace once around the wound edge, then tap Next."
+        NotificationCenter.default.post(name: NSNotification.Name("StartGuidedWoundMeasurement"),
+                                        object: notificationScope, userInfo: ["startFresh": true])
     }
 
     private func finishManualMeasurement() {
-        NotificationCenter.default.post(name: NSNotification.Name("ManualFinish"), object: nil)
+        NotificationCenter.default.post(name: NSNotification.Name("ManualFinish"), object: notificationScope)
     }
 
     private func clearManualMeasurement() {
-        NotificationCenter.default.post(name: NSNotification.Name("ManualClear"), object: nil)
+        NotificationCenter.default.post(name: NSNotification.Name("ManualClear"), object: notificationScope)
         scanQuality = .scanning
         isPreliminary = true
         isMeasurementFinalized = false
+        capturedMeasurement = nil
         hasSavedMeasurement = false
         segmentationVolumeApplied = false
-        volumeSourceText = "Manual correction in progress"
+        volumeSourceText = "Manual tracing in progress"
         scanProgress = manualPhase == .rim ? 0 : 0.5
         scanInstruction = manualPhase == .rim
             ? "Wound edge cleared. Trace once around it, then tap Next."
@@ -542,11 +677,11 @@ struct ContentView: View {
     }
 
     private func undoManualMeasurement() {
-        NotificationCenter.default.post(name: NSNotification.Name("ManualUndo"), object: nil)
+        NotificationCenter.default.post(name: NSNotification.Name("ManualUndo"), object: notificationScope)
     }
 
     private func returnToManualRim() {
-        NotificationCenter.default.post(name: NSNotification.Name("ManualBackToRim"), object: nil)
+        NotificationCenter.default.post(name: NSNotification.Name("ManualBackToRim"), object: notificationScope)
     }
 
     private func applyManualOutlineState(_ notification: Notification) {
@@ -577,20 +712,31 @@ struct ContentView: View {
         }
     }
 
+    private func saveMeasurementBeforeLeaving() throws {
+        guard canAttachMeasurements, !hasSavedMeasurement else { return }
+        guard logManager.add(title: "\(woundIntake.laterality.rawValue) \(woundIntake.bodyArea.rawValue)",
+            perimeter: displayedMetrics.perimeter, area: displayedMetrics.area, volume: displayedMetrics.volume,
+            patientID: patientID, patientName: patientProfile.displayName, bodyArea: woundIntake.bodyArea.rawValue,
+            laterality: woundIntake.laterality.rawValue, context: currentMeasurementContext) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        hasSavedMeasurement = true
+    }
+
     private func saveMeasurement() {
         guard hasMeasurement, isMeasurementFinalized, !hasSavedMeasurement else { return }
-        hasSavedMeasurement = true
-        logManager.add(
+        guard logManager.add(
             title: "\(patientProfile.displayName) \(woundIntake.bodyArea.rawValue)",
-            perimeter: metricsManager.perimeter,
-            area: metricsManager.area,
-            volume: metricsManager.volume,
-            severity: severityScore,
+            perimeter: displayedMetrics.perimeter,
+            area: displayedMetrics.area,
+            volume: displayedMetrics.volume,
             patientID: patientID,
             patientName: patientProfile.displayName,
             bodyArea: woundIntake.bodyArea.rawValue,
-            laterality: woundIntake.laterality.rawValue
-        )
+            laterality: woundIntake.laterality.rawValue,
+            context: currentMeasurementContext
+        ) else { return }
+        hasSavedMeasurement = true
         DispatchQueue.main.async {
             isShowingSaveSuccess = true
         }
@@ -650,11 +796,12 @@ private enum ScanQuality: Equatable {
 }
 
 private struct ScanQualityPill: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     let quality: ScanQuality
     let isDetecting: Bool
 
     var body: some View {
-        Label(isDetecting ? "Scanning" : quality.title, systemImage: isDetecting ? "dot.radiowaves.left.and.right" : quality.symbol)
+        Label(WoundL10n.text(isDetecting ? "Scanning" : quality.title), systemImage: isDetecting ? "dot.radiowaves.left.and.right" : quality.symbol)
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
@@ -664,8 +811,9 @@ private struct ScanQualityPill: View {
 }
 
 private struct DimensionOverlay: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     let area: Float
-    let depth: Float
+    let depth: Float?
     let bodyArea: BodyArea
     let laterality: Laterality
 
@@ -673,9 +821,10 @@ private struct DimensionOverlay: View {
         VStack(spacing: 6) {
             Image(systemName: "plus.viewfinder")
                 .font(.system(size: 38, weight: .light))
-            Text("\(laterality.rawValue) \(bodyArea.rawValue)")
+            Text(WoundL10n.text("\(laterality.rawValue) \(bodyArea.rawValue)"))
                 .font(.caption.weight(.bold))
-            Text(String(format: "Area %.2f cm² • Depth %.2f cm", area, depth))
+            Text(WoundL10n.text(String(format: "Area %.2f cm²", area) + " • Mean depth "
+                 + (depth.map { String(format: "%.2f cm", $0) } ?? "unavailable")))
                 .font(.caption2.monospacedDigit())
         }
         .foregroundStyle(.white)
@@ -686,9 +835,9 @@ private struct DimensionOverlay: View {
 }
 
 private struct ScanResultsPanel: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     let metrics: (perimeter: Float, area: Float, volume: Float)
-    let severity: Int
-    let depthCM: Float
+    let depthCM: Float?
     let scanQuality: ScanQuality
     let isPreliminary: Bool
     let segmentationVolumeApplied: Bool
@@ -701,32 +850,34 @@ private struct ScanResultsPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SeverityStrip(score: severity)
 
             HStack(spacing: 10) {
                 ResultMetric(title: "Area", value: String(format: "%.2f", metrics.area), unit: "cm²")
                 ResultMetric(title: "Volume", value: String(format: "%.2f", metrics.volume), unit: "cm³")
-                ResultMetric(title: "Depth", value: String(format: "%.2f", depthCM), unit: "cm")
+                ResultMetric(title: "Mean depth", value: depthCM.map { String(format: "%.2f", $0) } ?? "—", unit: "cm")
             }
 
-            Label(
-                volumeSourceText,
+            Text(WoundL10n.text("Mean depth is estimated from volume ÷ area."))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            Label(WoundL10n.text(
+                volumeSourceText),
                 systemImage: segmentationVolumeApplied ? "checkmark.seal.fill" : "cube.transparent"
             )
             .font(.caption.weight(.semibold))
             .foregroundStyle(segmentationVolumeApplied ? .green : .secondary)
-            .lineLimit(1)
-            .minimumScaleFactor(0.78)
+            .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
-                Label(isPreliminary ? "Capture Quality: \(scanQuality.title) • Preliminary" : "Capture Quality: \(scanQuality.title)", systemImage: scanQuality.symbol)
+                Label(WoundL10n.text(isPreliminary ? "Capture Quality: \(scanQuality.title) • Preliminary" : "Capture Quality: \(scanQuality.title)"), systemImage: scanQuality.symbol)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(scanQuality.tint)
 
                 Spacer()
 
                 ShareLink(item: shareText) {
-                    Label("Share", systemImage: "square.and.arrow.up")
+                    Label(WoundL10n.text("Share"), systemImage: "square.and.arrow.up")
                 }
                 .font(.caption.weight(.semibold))
                 .disabled(!canSave)
@@ -736,9 +887,9 @@ private struct ScanResultsPanel: View {
                 HStack {
                     Image(systemName: isSaved ? "checkmark.circle.fill" : "checkmark.seal.fill")
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(isSaved ? "Measurement Saved" : "Confirm & Save")
+                        Text(WoundL10n.text(isSaved ? "Measurement Saved" : "Confirm & Save"))
                             .font(.headline)
-                        Text("to \(patientName)")
+                        Text(WoundL10n.text("to \(patientName)"))
                             .font(.caption)
                             .lineLimit(1)
                     }
@@ -756,54 +907,23 @@ private struct ScanResultsPanel: View {
     }
 }
 
-private struct SeverityStrip: View {
-    let score: Int
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Severity")
-                    .font(.headline)
-                Spacer()
-                Text("\(score)/20")
-                    .font(.title3.weight(.bold).monospacedDigit())
-                    .foregroundStyle(score >= 15 ? .red : score >= 10 ? .orange : .green)
-            }
-
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.28))
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [.green, .yellow, .orange, .red],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: proxy.size.width * CGFloat(score) / 20)
-                }
-            }
-            .frame(height: 9)
-        }
-    }
-}
 
 private struct ResultMetric: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     let title: String
     let value: String
     let unit: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
+            Text(WoundL10n.text(title))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(value)
+                Text(WoundL10n.text(value))
                     .font(.title3.weight(.bold).monospacedDigit())
-                Text(unit)
+                Text(WoundL10n.text(unit))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -815,15 +935,16 @@ private struct ResultMetric: View {
 }
 
 struct MetricsView: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     let metrics: (perimeter: Float, area: Float, volume: Float)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Wound Measurements")
+            Text(WoundL10n.text("Wound Measurements"))
                 .font(.headline)
-            Text("Perimeter: \(metrics.perimeter, specifier: "%.2f") cm")
-            Text("Area: \(metrics.area, specifier: "%.2f") cm²")
-            Text("Volume: \(metrics.volume, specifier: "%.2f") cm³")
+            Text(WoundL10n.text("Perimeter: \(metrics.perimeter, specifier: "%.2f") cm"))
+            Text(WoundL10n.text("Area: \(metrics.area, specifier: "%.2f") cm²"))
+            Text(WoundL10n.text("Volume: \(metrics.volume, specifier: "%.2f") cm³"))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
@@ -832,12 +953,12 @@ struct MetricsView: View {
 }
 
 private struct ScanControlsBar: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let isDetecting: Bool
-    let hasSegmentation: Bool
     let automaticPhase: AutomaticMeasurementPhase
     let canConfirmWound: Bool
     let canFinishPointCapture: Bool
-    @Binding var showManualControls: Bool
     let onStartScan: () -> Void
     let onConfirmWound: () -> Void
     let onFinishCapture: () -> Void
@@ -845,13 +966,13 @@ private struct ScanControlsBar: View {
 
     private var primaryTitle: String {
         switch automaticPhase {
-        case .ready: return hasSegmentation ? "Map Again" : "Map Wound"
+        case .ready: return "Auto Detect"
         case .mapping: return "Mapping Wound…"
         case .awaitingConfirmation: return "Confirm Wound"
         case .capturing: return canFinishPointCapture ? "Finish Scan" : "Collecting Points…"
         case .finalizing: return "Finalizing…"
         case .complete: return "Measure Again"
-        case .failed: return "Try Again"
+        case .failed: return "Retry Auto Detect"
         }
     }
 
@@ -874,13 +995,6 @@ private struct ScanControlsBar: View {
         }
     }
 
-    private var automaticFlowIsActive: Bool {
-        switch automaticPhase {
-        case .mapping, .awaitingConfirmation, .capturing, .finalizing: return true
-        case .ready, .complete, .failed: return false
-        }
-    }
-
     private func performPrimaryAction() {
         switch automaticPhase {
         case .awaitingConfirmation:
@@ -895,56 +1009,35 @@ private struct ScanControlsBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        let layout = dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
+        layout {
             Button(action: performPrimaryAction) {
-                Label(primaryTitle, systemImage: primarySymbol)
+                Label(WoundL10n.text(primaryTitle), systemImage: primarySymbol)
                     .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 52)
+                    .frame(minHeight: 52)
             }
             .buttonStyle(.borderedProminent)
             .tint(automaticPhase == .awaitingConfirmation ? .green : .blue)
             .disabled(primaryDisabled)
 
-            Button {
-                if automaticPhase == .awaitingConfirmation {
-                    showManualControls = false
-                    onStartScan()
-                } else {
-                    showManualControls = true
-                    onCorrect()
-                }
-            } label: {
-                Label(
-                    automaticPhase == .awaitingConfirmation
-                        ? "Remap"
-                        : (hasSegmentation ? "Edit Mask" : "Trace Mask"),
-                    systemImage: automaticPhase == .awaitingConfirmation
-                        ? "arrow.clockwise"
-                        : (showManualControls ? "pencil.and.outline" : "pencil.tip.crop.circle")
-                )
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-                .frame(minWidth: 96, minHeight: 52)
+            Button(action: onCorrect) {
+                Label(WoundL10n.text("Trace Manually"), systemImage: "pencil.tip.crop.circle")
+                    .font(.subheadline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 52)
             }
             .buttonStyle(.bordered)
-            .tint(showManualControls ? .blue : .gray)
-            .disabled(
-                (automaticFlowIsActive && automaticPhase != .awaitingConfirmation)
-                    || isDetecting
-            )
-            .accessibilityHint(
-                automaticPhase == .awaitingConfirmation
-                    ? "Maps the wound boundary again before point capture"
-                    : hasSegmentation
-                    ? "Adjusts the detected wound edge"
-                    : "Lets you draw the wound edge manually"
-            )
+            .disabled(automaticPhase == .finalizing)
+            .accessibilityHint(WoundL10n.text("Starts a separate manual measurement with a blank outline"))
+
         }
     }
 }
 
 private struct ManualRefinementBar: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     let phase: ManualSelectionPhase
     let pointCount: Int
     let canFinish: Bool
@@ -962,43 +1055,43 @@ private struct ManualRefinementBar: View {
                     .foregroundStyle(phase == .rim ? .green : .cyan)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(phase.stepText)
+                    Text(WoundL10n.text(phase.stepText))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    Text(phase.title)
+                    Text(WoundL10n.text(phase.title))
                         .font(.subheadline.weight(.bold))
                 }
 
                 Spacer()
 
-                Text(hasDetectedSeed ? "Existing edge" : "\(pointCount) points")
+                Text(WoundL10n.text(hasDetectedSeed ? "Existing edge" : "\(pointCount) points"))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 8) {
                 Button(action: onUndo) {
-                    Label("Undo", systemImage: "arrow.uturn.backward")
+                    Label(WoundL10n.text("Undo"), systemImage: "arrow.uturn.backward")
                         .labelStyle(.iconOnly)
                         .frame(width: 30)
                 }
                 .buttonStyle(.bordered)
                 .disabled(!canUndo)
-                .accessibilityLabel("Undo last outline change")
+                .accessibilityLabel(WoundL10n.text("Undo last outline change"))
 
                 if phase == .bed {
                     Button(action: onBack) {
-                        Label("Back", systemImage: "chevron.left")
+                        Label(WoundL10n.text("Back"), systemImage: "chevron.left")
                             .labelStyle(.iconOnly)
                             .frame(width: 30)
                     }
                     .buttonStyle(.bordered)
-                    .accessibilityLabel("Return to wound edge")
+                    .accessibilityLabel(WoundL10n.text("Return to wound edge"))
                 }
 
                 Button(action: onFinish) {
-                    Label(
-                        phase.primaryTitle,
+                    Label(WoundL10n.text(
+                        phase.primaryTitle),
                         systemImage: phase == .rim ? "arrow.right.circle.fill" : "checkmark.circle.fill"
                     )
                     .frame(maxWidth: .infinity)
@@ -1008,14 +1101,14 @@ private struct ManualRefinementBar: View {
                 .disabled(!canFinish)
 
                 Button(action: onClear) {
-                    Label("Clear step", systemImage: "trash")
+                    Label(WoundL10n.text("Clear step"), systemImage: "trash")
                         .labelStyle(.iconOnly)
                         .frame(width: 30)
                 }
                 .buttonStyle(.bordered)
                 .tint(.red)
                 .disabled(pointCount == 0 && !hasDetectedSeed)
-                .accessibilityLabel("Clear \(phase.title.lowercased())")
+                .accessibilityLabel(WoundL10n.text("Clear \(phase.title.lowercased())"))
             }
         }
         .padding(10)
@@ -1024,6 +1117,7 @@ private struct ManualRefinementBar: View {
 }
 
 private struct LiDARScanGuidancePanel: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     let instruction: String
     let progress: Double
     let hasSegmentation: Bool
@@ -1052,7 +1146,7 @@ private struct LiDARScanGuidancePanel: View {
                     .font(.headline)
                     .foregroundStyle(isScanning ? .blue : hasSegmentation ? .green : .secondary)
 
-                Text(instruction)
+                Text(WoundL10n.text(instruction))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(2)
                     .minimumScaleFactor(0.84)
@@ -1060,14 +1154,9 @@ private struct LiDARScanGuidancePanel: View {
                 Spacer()
             }
 
-            ProgressView(value: progress)
-                .tint(.blue)
+            if isScanning { ProgressView(value: progress).tint(.blue) }
 
-            HStack(spacing: 12) {
-                WorkflowStep(title: "Map", isActive: boundaryMapped)
-                WorkflowStep(title: "Confirm", isActive: boundaryConfirmed)
-                WorkflowStep(title: "3D Capture", isActive: hasMeasurement)
-            }
+
         }
         .padding(12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -1075,11 +1164,12 @@ private struct LiDARScanGuidancePanel: View {
 }
 
 private struct WorkflowStep: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     let title: String
     let isActive: Bool
 
     var body: some View {
-        Label(title, systemImage: isActive ? "checkmark.circle.fill" : "circle")
+        Label(WoundL10n.text(title), systemImage: isActive ? "checkmark.circle.fill" : "circle")
             .font(.caption.weight(.semibold))
             .foregroundStyle(isActive ? .green : .secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1120,3 +1210,22 @@ final class MetricsManager: ObservableObject {
     ContentView()
         .environmentObject(MeasurementLogManager())
 }
+
+#if DEBUG
+@MainActor func woundLanguageScanFixture() -> some View {
+    VStack(alignment: .leading, spacing: 16) {
+        Text(WoundL10n.text("Starting LiDAR camera…")).font(.headline)
+        Text(WoundL10n.text("Step 2 of 2: Aim for a 5–10 second gentle sweep. Keep the whole wound and nearby skin in view."))
+        ProgressView(value: 0.65)
+        Text(WoundL10n.text("Seen 100% · verified 65% / 60%. Make a small side-to-side sweep; keep the wound centered."))
+        ScanControlsBar(isDetecting: true, automaticPhase: .capturing, canConfirmWound: false,
+                        canFinishPointCapture: true, onStartScan: {}, onConfirmWound: {}, onFinishCapture: {}, onCorrect: {})
+            .id("scan-actions")
+        ResultMetric(title: "Mean depth", value: "0.50", unit: "cm")
+        Text(WoundL10n.text("Measurements captured"))
+        Text(WoundL10n.text("Area 12.50 cm² · Volume 3.20 cm³"))
+        Button(WoundL10n.text("Continue to AI with measurements")) {}.buttonStyle(.borderedProminent)
+        Text(WoundL10n.text("These measurements will be attached to your AI photo check. Mean depth is estimated from volume ÷ area."))
+    }.fixedSize(horizontal: false, vertical: true).padding()
+}
+#endif

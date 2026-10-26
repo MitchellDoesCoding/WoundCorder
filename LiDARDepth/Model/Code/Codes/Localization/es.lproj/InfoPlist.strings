@@ -1,0 +1,5 @@
+"NSCameraUsageDescription" = "WoundCorder usa la cámara y los sensores de profundidad para escanear y medir heridas visibles.";
+"NSLocationWhenInUseUsageDescription" = "La ubicación puede añadir contexto opcional a las mediciones de heridas.";
+"NSMicrophoneUsageDescription" = "WoundCorder usa el micrófono solo al grabar una nota de voz opcional.";
+"NSPhotoLibraryAddUsageDescription" = "WoundCorder puede guardar imágenes del escaneo y exportaciones 3D en su fototeca.";
+"NSPhotoLibraryUsageDescription" = "WoundCorder accede a fotos cuando selecciona imágenes de heridas, recetas o notas.";

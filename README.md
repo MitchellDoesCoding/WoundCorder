@@ -1,10 +1,10 @@
-# WoundScope
+# WoundCorder
 
-**WoundScope** is an iOS-based wound documentation and measurement platform designed to make wound assessment more objective, repeatable, and practical outside specialty care.
+**WoundCorder** is an iOS-based wound documentation and measurement platform designed to make wound assessment more objective, repeatable, and practical outside specialty care.
 
 Current wound documentation often depends on subjective visual judgment, manual ruler measurements, and inconsistent clinical notes. This creates problems when wounds are monitored over time, especially in home health, skilled nursing facilities, primary care, and other settings where specialty wound care may not be immediately available.
 
-WoundScope combines **LiDAR-based 3D wound measurement**, **image-based wound documentation**, and **AI-assisted analysis** to help standardize wound tracking while keeping the workflow simple enough for real-world use.
+WoundCorder combines **LiDAR-based 3D wound measurement**, **image-based wound documentation**, and **AI-assisted analysis** to help standardize wound tracking while keeping the workflow simple enough for real-world use.
 
 ---
 
@@ -26,7 +26,7 @@ The core problem is turning those photos into reliable, repeatable clinical info
 
 ## Project Overview
 
-WoundScope is built as a mobile-first wound assessment tool that uses the hardware already available on modern iPhones and iPads.
+WoundCorder is built as a mobile-first wound assessment tool that uses the hardware already available on modern iPhones and iPads.
 
 The app is designed to support:
 
@@ -36,6 +36,7 @@ The app is designed to support:
 - AI-assisted wound characterization
 - On-device or privacy-preserving analysis workflows
 - Longitudinal wound tracking over time
+- A searchable Reference tab in public and professional modes, with 18 bundled photos across all nine prediction categories, explanations, source attribution, and enlarged photo viewing
 
 The goal is not to replace clinicians. The goal is to give clinicians better measurement data and more consistent documentation.
 
@@ -45,7 +46,7 @@ The goal is not to replace clinicians. The goal is to give clinicians better mea
 
 ### LiDAR-Based Wound Measurement
 
-WoundScope uses Apple’s ARKit and LiDAR capabilities to estimate wound geometry in three dimensions.
+WoundCorder uses Apple’s ARKit and LiDAR capabilities to estimate wound geometry in three dimensions.
 
 Planned and implemented measurement features include:
 
@@ -73,7 +74,7 @@ Potential documentation fields include:
 
 ### AI-Assisted Analysis
 
-WoundScope explores the use of vision-language models and wound-specific AI tools to assist with structured wound documentation.
+WoundCorder explores the use of vision-language models and wound-specific AI tools to assist with structured wound documentation.
 
 The AI layer is intended to support internal review and clinician-facing workflows, not provide unsupervised diagnosis or treatment recommendations.
 
@@ -99,12 +100,11 @@ Potential AI outputs include:
 - Core ML
 - LiDAR depth sensing
 
-### Backend / API
+### On-device inference
 
-- Node.js
-- Express
-- REST API endpoints for wound image analysis
-- Optional external AI model integration
+- Bundled Core ML wound classifier
+- Optional local Qwen vision-language models (llama.cpp and MNN)
+- Explicit, user-reviewed email sharing
 
 ### Machine Learning / Computer Vision
 
@@ -118,7 +118,7 @@ Potential AI outputs include:
 
 ## Current Development Status
 
-WoundScope is an active prototype. Current work focuses on improving:
+WoundCorder is an active prototype. Current work focuses on improving:
 
 - Measurement accuracy
 - Wound boundary detection
@@ -133,7 +133,7 @@ Earlier versions showed promising area measurement performance, but further vali
 
 ## Example Workflow
 
-1. Open the WoundScope app.
+1. Open the WoundCorder app.
 2. Position the device over the wound.
 3. Capture a wound image and LiDAR scan.
 4. Mark or refine the wound boundary.
@@ -146,7 +146,7 @@ Earlier versions showed promising area measurement performance, but further vali
 
 ## Clinical Use Case
 
-WoundScope is designed for settings where wound monitoring needs to be more consistent and scalable, including:
+WoundCorder is designed for settings where wound monitoring needs to be more consistent and scalable, including:
 
 - Home health
 - Skilled nursing facilities
@@ -162,7 +162,7 @@ The app is especially relevant for chronic wounds where tracking healing over ti
 
 ## Safety and Limitations
 
-WoundScope is a prototype and is not currently intended to replace clinical judgment.
+WoundCorder is a prototype and is not currently intended to replace clinical judgment.
 
 Important limitations include:
 
@@ -202,28 +202,38 @@ Planned development areas include:
 
 ---
 
+## Getting Started
+
+1. Clone [MitchellDoesCoding/WoundCorder](https://github.com/MitchellDoesCoding/WoundCorder).
+2. Open `WoundCorder.xcodeproj` in Xcode with the iOS 26 SDK or later.
+3. Select the **WoundCorder** scheme and configure your development signing team.
+4. Build and run on an iPhone or iPad. LiDAR measurements require a LiDAR-capable physical device; the Simulator supports development with inference fallbacks.
+
+The app target currently requires iOS 26. Optional local vision-language model weights download separately; see `Vendor/README.md` for bundled runtime details.
+
+## Development Checks
+
+Run the standalone regression and localization checks from the repository root:
+
+```sh
+bash Tests/run-review-checks.sh
+```
+
+These checks require the Xcode command-line tools, Swift, and Python 3. Physical-device camera, LiDAR, and inference behavior still need device testing.
+
 ## Repository Structure
 
 ```text
-WoundScope/
-├── iOS-App/
-│   ├── ARKit measurement views
-│   ├── wound boundary tools
-│   ├── LiDAR mesh processing
-│   └── image capture workflow
-│
-├── Backend/
-│   ├── Express API server
-│   ├── image upload endpoint
-│   └── AI analysis endpoint
-│
-├── Models/
-│   ├── wound segmentation models
-│   └── model configuration files
-│
-├── Docs/
-│   ├── clinical workflow notes
-│   ├── measurement validation notes
-│   └── safety documentation
-│
+WoundCorder/
+├── WoundCorder.xcodeproj/        # Xcode project and WoundCorder scheme
+├── LiDARDepth/                  # App sources (retains the original source directory name)
+│   ├── Assets.xcassets/         # App icons, branding, and reference images
+│   ├── Model/Code/Codes/        # App shell, measurement, storage, localization, and AI
+│   └── New Group/Views/         # Capture views and rendering support
+├── Tests/                       # Regression, policy, and localization checks
+├── Documentation/               # Workflow, model integration, and release notes
+├── ReferenceData/               # Reference image metadata and attribution
+├── Vendor/                      # Local inference runtimes and licenses
+├── Archive/LegacyMeasurement/   # Earlier measurement implementations
 └── README.md
+```

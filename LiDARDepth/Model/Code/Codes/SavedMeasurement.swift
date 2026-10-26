@@ -7,11 +7,13 @@ struct SavedMeasurement: Identifiable, Codable, Equatable {
     let perimeter: Float
     let area: Float
     let volume: Float
+    // Decode historical records without displaying or recomputing their retired score.
     let severity: Int?
     let patientID: UUID?
     let patientName: String?
     let bodyArea: String?
     let laterality: String?
+    let context: WoundAnalysisContext?
 
     init(
         id: UUID = UUID(),
@@ -24,7 +26,8 @@ struct SavedMeasurement: Identifiable, Codable, Equatable {
         patientID: UUID? = nil,
         patientName: String? = nil,
         bodyArea: String? = nil,
-        laterality: String? = nil
+        laterality: String? = nil,
+        context: WoundAnalysisContext? = nil
     ) {
         self.id = id
         self.title = title
@@ -37,5 +40,6 @@ struct SavedMeasurement: Identifiable, Codable, Equatable {
         self.patientName = patientName
         self.bodyArea = bodyArea
         self.laterality = laterality
+        self.context = context
     }
 }

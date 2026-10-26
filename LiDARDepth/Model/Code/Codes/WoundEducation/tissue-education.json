@@ -1,0 +1,22 @@
+{
+  "inflammation": {
+    "title": "Inflammation",
+    "text": "This is the body's early repair stage. The area may look red, feel warm, swell, and hurt. Some of this is normal and helps clean the wound. But too much, or red that keeps spreading, can be a sign of infection. Tell your care team if redness grows or the wound gets more painful."
+  },
+  "necrotic_eschar": {
+    "title": "Necrosis / eschar (dead tissue)",
+    "text": "This is dead tissue in the wound. It has lost its blood supply. Dry, hard, black dead tissue is called eschar. Wet dead tissue can look dark yellow or brown. Dead tissue slows healing and often needs to be removed by a care team."
+  },
+  "slough_fibrin": {
+    "title": "Slough",
+    "text": "This is soft, wet, dead material in the wound. It can be yellow, tan, green, or brown and may look stringy or mushy. It can slow healing and may need to be cleaned away so new tissue can grow."
+  },
+  "granulation": {
+    "title": "Granulation",
+    "text": "This is healthy new tissue that fills in the wound. It is red or pink and looks bumpy and moist. It has tiny new blood vessels that bring oxygen. Granulation is a good sign that the wound is healing."
+  },
+  "epithelial": {
+    "title": "Epithelium (new skin)",
+    "text": "This is the new skin that grows over the wound to close it. It starts at the edges and moves toward the center. It often looks light pink and gets paler as it turns into normal skin. This is the final sign of healing."
+  }
+}

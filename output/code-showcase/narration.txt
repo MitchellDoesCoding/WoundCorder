@@ -1,0 +1,4 @@
+The classifier scores nine categories and flags confidence below zero point three six as uncertain. That uncertainty triggers an early return before further analysis. When checks pass and on-device analysis is selected, Qwen processes the image and health context locally.
+
+App imagery: actual iPhone simulator screenshot of WoundReviewHarness; fixed demo result, not live Qwen inference.
+Source code excerpts preserve original line numbers; long lines wrap for presentation.

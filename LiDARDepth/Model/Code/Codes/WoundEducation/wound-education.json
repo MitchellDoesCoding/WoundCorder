@@ -1,0 +1,74 @@
+{
+  "diabetic_foot_ulcer": {
+    "title": "Diabetic foot wound (diabetic foot ulcer)",
+    "patient": "This is an open sore on the foot. It happens in people with diabetes. High blood sugar can harm the nerves and blood flow in the feet. You may not feel a small cut or blister, so it can grow into a sore. These sores are often on the toes or the bottom of the foot. Keeping weight off the foot and caring for the wound help it heal.",
+    "link": "https://medlineplus.gov/diabeticfoot.html",
+    "proTitle": "Diabetic foot ulcer",
+    "professional": "Offload pressure (contact cast, removable walker, crutches/wheelchair); cleanse and apply sterile, moisture-controlling dressing; sharp debride callus/slough only if no severe ischemia; optimize glycemic control.",
+    "caution": "Assess perfusion (pedal pulses, ABI) before debriding; urgent referral for deep infection, osteomyelitis, gangrene, or critical limb ischemia."
+  },
+  "venous_leg_ulcer": {
+    "title": "Venous leg wound (venous leg ulcer)",
+    "patient": "This is a sore on the lower leg, often near the ankle. It forms when leg veins do not push blood back up to the heart well. Blood pools in the leg, and the skin breaks down. The leg may swell and the skin may turn dark. Ask your care team about care. They must check blood flow before you use tight wraps or stockings.",
+    "link": "https://medlineplus.gov/ency/article/000834.htm",
+    "proTitle": "Venous leg ulcer",
+    "professional": "Multilayer/graduated compression (only after arterial disease excluded), leg elevation, calf-muscle activity; simple absorbent dressing under compression; manage peri-wound skin.",
+    "caution": "Confirm ABI before compression \u2014 compression is hazardous in significant arterial disease; refer for non-healing or atypical ulcers."
+  },
+  "pressure_injury": {
+    "title": "Pressure injury (bed sore)",
+    "patient": "This is skin and tissue damage from staying in one spot too long. The weight of the body presses on the skin over a bone, like the hips, back, or heels. The pressure cuts off blood flow and the skin breaks down. Moving often, changing position, and using soft cushions help prevent it.",
+    "link": "https://medlineplus.gov/pressuresores.html",
+    "proTitle": "Pressure injury",
+    "professional": "Offload/reposition frequently, pressure-redistributing surface, heel suspension; cleanse, stage, and dress by depth (foam/alginate); nutrition and protein optimization; pain control at dressing changes.",
+    "caution": "Deep-tissue injury, unstageable/eschar, or signs of infection warrant specialist input; do not debride stable dry heel eschar without assessment."
+  },
+  "abrasion": {
+    "title": "Abrasion (scrape)",
+    "patient": "This is a shallow wound where the top layer of skin is rubbed or scraped off. It often happens from a fall or sliding on a rough surface. It may sting, be red, and ooze a little. Most scrapes heal on their own with gentle cleaning and a clean cover.",
+    "link": "https://medlineplus.gov/woundsandinjuries.html",
+    "proTitle": "Abrasion",
+    "professional": "Irrigate/cleanse (tap water or saline), remove embedded debris, apply occlusive/moist dressing (film, petrolatum, hydrogel).",
+    "caution": "Refer for extensive, deeply embedded (tattooing), or facial abrasions."
+  },
+  "laceration_or_cut": {
+    "title": "Laceration or cut",
+    "patient": "This is a tear or slice in the skin. It can be made by a sharp object like a knife or glass. A deep cut may need stitches to close and may bleed a lot. Clean, cover, and press on it to stop bleeding. Get help for deep cuts, cuts that gape open, or cuts that keep bleeding.",
+    "link": "https://medlineplus.gov/ency/article/000043.htm",
+    "proTitle": "Laceration / cut",
+    "professional": "Control bleeding with direct pressure; irrigate/cleanse; close low-tension linear wounds with adhesive or primary closure within the appropriate window; occlusive dressing.",
+    "caution": "Refer for deep, gaping, high-tension wounds, bites, or injury to vessels, nerves, tendons, joints, or bone; antibiotics for bites/contaminated wounds."
+  },
+  "burn": {
+    "title": "Burn",
+    "patient": "This is skin damage from heat, fire, hot liquids, chemicals, electricity, or the sun. A mild burn is red and sore. A worse burn can blister or look white, brown, or black. Cool a small burn with cool (not ice-cold) water. Get help right away for large, deep, or very painful burns.",
+    "link": "https://medlineplus.gov/burns.html",
+    "proTitle": "Burn",
+    "professional": "Stop the burning process; cool small burns with cool (not ice) water; cover with clean non-adherent dressing; analgesia; leave blisters intact where possible.",
+    "caution": "Urgent referral/transfer for large burns (assess total body surface area), deep, circumferential, facial, hand, genital, airway, chemical, or electrical burns."
+  },
+  "bruise": {
+    "title": "Bruise",
+    "patient": "This is bleeding under the skin from a bump or hit. The skin is not broken. It looks black, blue, purple, or yellow as it heals. It may be sore and swollen. A cold pack in the first day can help. Most bruises fade in 1 to 2 weeks.",
+    "link": "https://medlineplus.gov/ency/article/007213.htm",
+    "proTitle": "Bruise (contusion)",
+    "professional": "Conservative care \u2014 rest, cold compress in first 24 h, elevation, analgesia; skin intact so no dressing needed.",
+    "caution": "Evaluate for compartment syndrome, large/expanding hematoma, or underlying fracture; consider bleeding disorder/anticoagulation if spontaneous or extensive."
+  },
+  "normal_control": {
+    "title": "No open wound seen",
+    "patient": "The photo may not show an open wound. This does not rule out a skin problem. Ask your care team about a spot that changes, hurts, or does not heal.",
+    "professional": "Normal-control model prediction does not exclude a non-open skin lesion or other pathology. Correlate clinically.",
+    "proTitle": "Normal control",
+    "caution": "A photo cannot exclude disease.",
+    "link": "https://medlineplus.gov/woundsandinjuries.html"
+  },
+  "surgical_wound": {
+    "title": "Wound from surgery",
+    "patient": "This may be a wound from surgery. Follow the wound care plan from your surgery team. Contact them if it gets worse.",
+    "professional": "Review operative history and the surgical team\u2019s wound-care plan.",
+    "proTitle": "Surgical wound",
+    "caution": "Escalate dehiscence, spreading infection, or systemic symptoms.",
+    "link": "https://medlineplus.gov/woundsandinjuries.html"
+  }
+}

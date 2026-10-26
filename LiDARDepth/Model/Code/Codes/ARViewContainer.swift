@@ -20,12 +20,13 @@ public typealias AnyMeasurementState = Any
 
 enum OutlinePhase: Equatable { case top, bottom, done, none }
 
-/// A top-level SwiftUI placeholder AR container so other files (e.g., ContentView) can reference it as `ARViewContainer`.
-/// Replace the body implementation with a real ARKit/RealityKit integration when available.
+/// The sole active LiDAR measurement surface. Each instance has isolated control/status events.
 struct ARViewContainer: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     @Binding var topOutlinePoints: [SIMD3<Float>]
     @Binding var bottomOutlinePoints: [SIMD3<Float>]
     @State private var outlinePhase: OutlinePhase
+    let notificationScope: NSObject
     let metricsManager: MetricsManager
     @Binding var selectedDepthPoint: SIMD3<Float>?
     private var finalContours = FinalContours()
@@ -40,10 +41,12 @@ struct ARViewContainer: View {
         bottomOutlinePoints: Binding<[SIMD3<Float>]>,
         metricsManager: MetricsManager,
         selectedDepthPoint: Binding<SIMD3<Float>?>,
-        onMeasurementState: @escaping (AnyMeasurementState) -> Void
+        onMeasurementState: @escaping (AnyMeasurementState) -> Void,
+        notificationScope: NSObject = NSObject()
     ) {
         self._topOutlinePoints = topOutlinePoints
         self._bottomOutlinePoints = bottomOutlinePoints
+        self.notificationScope = notificationScope
         self.metricsManager = metricsManager
         self._selectedDepthPoint = selectedDepthPoint
         self.onMeasurementState = onMeasurementState
@@ -54,6 +57,7 @@ struct ARViewContainer: View {
         ARViewControllerHost(topOutlinePoints: $topOutlinePoints,
                              bottomOutlinePoints: $bottomOutlinePoints,
                              outlinePhase: $outlinePhase,
+                             notificationScope: notificationScope,
                              metricsManager: metricsManager,
                              selectedDepthPoint: $selectedDepthPoint,
                              onMeasurementState: onMeasurementState)
@@ -72,12 +76,14 @@ private struct ARViewControllerHost: UIViewControllerRepresentable {
     @Binding var topOutlinePoints: [SIMD3<Float>]
     @Binding var bottomOutlinePoints: [SIMD3<Float>]
     @Binding var outlinePhase: OutlinePhase
+    let notificationScope: NSObject
     let metricsManager: MetricsManager
     @Binding var selectedDepthPoint: SIMD3<Float>?
     let onMeasurementState: (AnyMeasurementState) -> Void
 
     func makeUIViewController(context: Context) -> ARViewController {
         let vc = ARViewController()
+        vc.notificationScope = notificationScope
         // Bind the SwiftUI points arrays to the controller
         vc.topOutlinePoints = Binding(get: { self.topOutlinePoints }, set: { self.topOutlinePoints = $0 })
         vc.bottomOutlinePoints = Binding(get: { self.bottomOutlinePoints }, set: { self.bottomOutlinePoints = $0 })
@@ -144,23 +150,12 @@ private struct ARViewControllerHost: UIViewControllerRepresentable {
 }
 #endif
 
-// Disambiguate LiDARVolumeCalculator across possible modules
-// Prefer the packaged volume module when the compile flag USE_WOUNDCORDER_VOLUME is set.
-#if canImport(WoundCorder)
-#if USE_WOUNDCORDER_VOLUME
-import WoundCorder
-private typealias VolumeCalculatorType = WoundCorder.LiDARVolumeCalculator
-#else
-// If the flag is not set, fall back to the local project LiDARVolumeCalculator
-private typealias VolumeCalculatorType = LiDARVolumeCalculator
-#endif
-#else
-// If the packaged module is not available, use the local project LiDARVolumeCalculator.
-private typealias VolumeCalculatorType = LiDARVolumeCalculator
-#endif
-
 final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
+    var notificationScope = NSObject()
+    private var isVisible = false
     private let sceneView = ARSCNView()
+    private let woundHighlightHalo = CAShapeLayer()
+    private let woundHighlight = CAShapeLayer()
     
     // SceneKit category masks (used to keep mesh hit-tests and overlays separate)
     private enum NodeCategory {
@@ -237,7 +232,6 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     private var isScanLocked: Bool = false
     
     // Single LiDAR volume calculator:
-    private let volumeCalculator: VolumeCalculatorType = VolumeCalculatorType()
     
     /// All anchors from LiDAR mesh, if needed
     var scannedMeshAnchors: [ARMeshAnchor] = []
@@ -267,8 +261,8 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     private var lastSessionAnchorDispatchTime: TimeInterval = 0
     
     // Core Image and Vision
-    private let ciContext = CIContext()
-    private let edgeFilter = CIFilter.edges()
+    private lazy var ciContext = CIContext()
+    private lazy var edgeFilter = CIFilter.edges()
     private var edgeOverlayView: UIImageView = UIImageView()
     
     // HUD label for prompts
@@ -278,7 +272,6 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     private var hudPromptsEnabled: Bool = true
     
     // Vision / Core ML segmentation scaffolding
-    private var segmentationRequest: VNCoreMLRequest?
     // Created on segmentationQueue on first use so Core ML compilation/loading never
     // blocks the scanner's initial modal presentation or its Back control.
     private var woundSegmenter: WoundMultimodalSegmenter?
@@ -288,7 +281,6 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     private var segmentationGeneration = 0
     private var activeSegmentationGeneration = 0
     private var activeSegmentationFrame: ARFrame?
-    private var activeSegmentationOrientation: UIInterfaceOrientation = .portrait
     
     // New boolean flag and thresholds for auto segmentation and contour processing
     private var isAutoSegmentationEnabled = true
@@ -368,6 +360,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
 
     private enum AutoWoundMatchMode {
         case acquisition
+        case mappingConfirmation
         case tracking
         case anchorEnvelope
     }
@@ -375,6 +368,8 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     private var pendingAutoWoundObservations: [AutoWoundObservation] = []
     private var autoWoundTrackingLock: AutoWoundTrackingLock?
     private var autoWoundAttemptSequence = 0
+    private var detectionFrameGate = WoundDetectionFrameGate()
+    private var surfaceFrameGate = WoundDetectionFrameGate()
     private var autoWoundRejectCount = 0
     private var lastAcceptedAutoWoundAt: CFTimeInterval = 0
     private let autoWoundAcquisitionMaxAge: TimeInterval = 4.5
@@ -389,6 +384,10 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     
     // Track whether AR session is currently running to avoid double-run
     private var sessionRunning: Bool = false
+    private var cameraStartupTimeout: DispatchWorkItem?
+    private let cameraSessionQueue = DispatchQueue(label: "ai.woundcorder.cameraSession", qos: .userInitiated)
+    private var cameraStartupRetryCount = 0
+    private var cameraRunStartedAt: CFTimeInterval = 0
     private var isRequestingCameraAuthorization = false
     private var sessionStartWorkItem: DispatchWorkItem?
     private var shouldResetTrackingOnNextRun = true
@@ -418,37 +417,32 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     private let volumetricFinalizationPollInterval: TimeInterval = 0.18
     private var volumetricScanStartedAt: CFTimeInterval = 0
     private var volumetricCaptureStartedAt: CFTimeInterval = 0
-    private let volumetricBoundaryMappingTimeout: TimeInterval = 11.0
-    private let volumetricCaptureDuration: TimeInterval = 10.0
-    private let volumetricCaptureMaximumDuration: TimeInterval = 18.0
-    private let minimumConfirmedObservationCount = 4
+    private let volumetricBoundaryMappingTimeout = WoundBoundaryReviewPolicy.mappingTimeout
+    private var captureEstimates: [VolumetricMetricSample] = []
+    private var lastCaptureEstimateAt: CFTimeInterval = 0
+    private var lastAcceptedSurfaceFrameAt: CFTimeInterval = 0
+    private var lastEstimatedSurfaceFrameAt: CFTimeInterval = 0
+    private let minimumConfirmedObservationCount = WoundBoundaryReviewPolicy.minimumMatchingObservations
     private var didStartSegmentationForVolumetricScan = false
     private var didFinalizeVolumetricMeasurement = false
     private var lastVolumetricPromptAt: CFTimeInterval = 0
     private var isVolumetricLiDARScanning = false
-    private struct VolumetricMetricSample {
-        let perimeter: Float
-        let area: Float
-        let volume: Float
-        let qualityRank: Int
-    }
+    private typealias VolumetricMetricSample = WoundMeasurementConsistency.VolumetricMetricSample
     private var volumetricMetricSamples: [VolumetricMetricSample] = []
     private let maxVolumetricMetricSamples = 7
     private let minimumVolumetricMetricSamples = 2
     private var meshPointCloudNode: SCNNode?
     private var lastPointCloudUpdateTime: CFTimeInterval = 0
     private var lastSurfaceAccumulationTime: CFTimeInterval = 0
-    private let surfaceAccumulationInterval: TimeInterval = 0.42
+    private let surfaceAccumulationInterval: TimeInterval = 0.20
     private var accumulatedSurfacePoints: [SIMD3<Float>] = []
     private struct SurfaceVoxelKey: Hashable {
         let x: Int32
         let y: Int32
         let z: Int32
     }
-    private struct SurfacePlaneCellKey: Hashable {
-        let u: Int32
-        let v: Int32
-    }
+    private typealias SurfacePlaneCellKey = WoundCoverageGrid.Cell
+    private var confirmedCoverageGrid: WoundCoverageGrid?
     private struct SurfacePlaneCellAccumulator {
         var uSum: Float
         var vSum: Float
@@ -486,6 +480,17 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     private var confirmedWoundWorldPolygon: [SIMD3<Float>] = []
     private var confirmedWoundSurfaceNormal: SIMD3<Float>?
     private var confirmedSurfaceCellViews: [SurfaceCellViewKey: SurfacePlaneCellAccumulator] = [:]
+    private struct SurfaceSummaryCacheEntry {
+        let boundary: [SIMD3<Float>]
+        let normal: SIMD3<Float>
+        let summaries: [ConfirmedSurfaceCellSummary]
+    }
+    // Coverage, rendering, and estimation share summaries for the same depth data.
+    // Keep original and resampled boundary entries; all expire on the next sample.
+    private var surfaceSummaryCache: [SurfaceSummaryCacheEntry] = []
+    private var verifiedSurfaceCells: [SurfacePlaneCellKey: ConfirmedSurfaceCellSummary] = [:]
+    private var verifiedCellEvidence: [SurfacePlaneCellKey: WoundVerifiedCellEvidence] = [:]
+    private var recheckingSurfaceCells: Set<SurfacePlaneCellKey> = []
     private var captureViewpoints: [CaptureViewpoint] = []
     private let maximumCaptureViewpoints = 12
     private var lastGuidedTraceScreenPoint: CGPoint?
@@ -507,8 +512,8 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     private var hudHideWorkItem: DispatchWorkItem?
     private var didShutdown = false
     // Dedicated queue for Vision segmentation
-    private let segmentationQueue = DispatchQueue(label: "ai.woundscope.segmentation")
-    private let meshUpdateQueue = DispatchQueue(label: "ai.woundscope.meshUpdate", qos: .userInitiated)
+    private let segmentationQueue = DispatchQueue(label: "ai.woundcorder.segmentation")
+    private let meshUpdateQueue = DispatchQueue(label: "ai.woundcorder.meshUpdate", qos: .userInitiated)
     
     // Last tracking HUD shown timestamp to prevent repeated messages
     private var lastTrackingHUDShownAt: CFTimeInterval = 0
@@ -542,12 +547,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     }
     
     // Add struct VolumeQualityFlags with new property calibrationUncertainty
-    struct VolumeQualityFlags {
-        var contourMismatch: Bool = false
-        var incompleteOutline: Bool = false
-        var bottomLargerThanTop: Bool = false
-        var calibrationUncertainty: Bool = false
-    }
+    typealias VolumeQualityFlags = WoundGeometry.VolumeQualityFlags
     
     private struct MeshSnapshot {
         let anchorID: UUID
@@ -571,14 +571,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     }
     
     private func validateContourForVolume(_ pts: [SIMD3<Float>]) -> Bool {
-        guard pts.count >= 3 else { return false }
-        
-        // Reject near-collinear contours
-        let normal = polygonNormal(pts)
-        let area = abs(simd_length(normal))
-        guard area > 1e-6 else { return false }
-        
-        return true
+        WoundGeometry.validateContourForVolume(pts)
     }
     
     
@@ -599,33 +592,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     // MARK: - Lofted volume helpers (top/bottom outlines -> 3D volume)
     
     private func resampleClosedPolyline(_ pts: [SIMD3<Float>], targetCount: Int) -> [SIMD3<Float>] {
-        guard pts.count >= 3, targetCount >= 3 else { return pts }
-        // build cumulative lengths around closed loop
-        var loop = pts
-        if loop.first != loop.last { loop.append(loop.first!) }
-        var lengths: [Float] = [0]
-        var total: Float = 0
-        for i in 0..<(loop.count - 1) {
-            let d = simd_length(loop[i+1] - loop[i])
-            total += d
-            lengths.append(total)
-        }
-        guard total > 0 else { return Array(pts.prefix(targetCount)) }
-        // sample equally spaced
-        var out: [SIMD3<Float>] = []
-        out.reserveCapacity(targetCount)
-        for k in 0..<targetCount {
-            let t = (Float(k) / Float(targetCount)) * total
-            // find segment
-            var idx = 0
-            while idx < lengths.count - 1 && lengths[idx+1] < t { idx += 1 }
-            let t0 = lengths[idx]
-            let t1 = lengths[idx+1]
-            let segT = (t1 - t0) > 0 ? (t - t0) / (t1 - t0) : 0
-            let p = simd_mix(loop[idx], loop[idx+1], SIMD3<Float>(repeating: segT))
-            out.append(p)
-        }
-        return out
+        WoundGeometry.resampleClosedPolyline(pts, targetCount: targetCount)
     }
     
     /// Resamples two closed contours to the same point count, then:
@@ -633,156 +600,19 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     ///  - aligns the start index via cyclic shift (minimizes correspondence error)
     /// This dramatically reduces volume spikes when the user starts tracing the two outlines at different locations.
     private func alignedResampledLoops(top: [SIMD3<Float>], bottom: [SIMD3<Float>], targetCount: Int) -> (t: [SIMD3<Float>], b: [SIMD3<Float>])? {
-        guard top.count >= 3, bottom.count >= 3 else { return nil }
-        
-        let N = max(32, min(targetCount, 256))
-        let t = resampleClosedPolyline(top, targetCount: N)
-        var b = resampleClosedPolyline(bottom, targetCount: N)
-        guard t.count >= 3, b.count >= 3 else { return nil }
-        
-        // Normalize winding
-        let nt = polygonNormal(t)
-        let nb = polygonNormal(b)
-        if simd_dot(nt, nb) < 0 {
-            b.reverse()
-        }
-        
-        // Align starts by cyclic shift to minimize RMS distance between corresponding points
-        func bestShift(reference: [SIMD3<Float>], candidate: [SIMD3<Float>]) -> Int {
-            let n = min(reference.count, candidate.count)
-            guard n > 0 else { return 0 }
-            var best = 0
-            var bestScore: Float = .greatestFiniteMagnitude
-            for s in 0..<n {
-                var score: Float = 0
-                for i in 0..<n {
-                    let d = reference[i] - candidate[(i + s) % n]
-                    score += simd_length_squared(d)
-                }
-                if score < bestScore {
-                    bestScore = score
-                    best = s
-                }
-            }
-            return best
-        }
-        
-        let shift = bestShift(reference: t, candidate: b)
-        if shift != 0 {
-            b = Array(b[shift...]) + Array(b[..<shift])
-        }
-        
-        return (t, b)
+        WoundGeometry.alignedResampledLoops(top: top, bottom: bottom, targetCount: targetCount)
     }
     
     
-    private func signedVolumeOfTriangle(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>) -> Float {
-        // 1/6 * dot(a, cross(b, c))
-        return simd_dot(a, simd_cross(b, c)) / 6.0
-    }
+
     
     private func loftedVolume(top: [SIMD3<Float>], bottom: [SIMD3<Float>]) -> Float? {
-        guard let loops = alignedResampledLoops(top: top, bottom: bottom, targetCount: max(top.count, bottom.count)) else { return nil }
-        let t = loops.t
-        let b = loops.b
-        let N = min(t.count, b.count)
-        guard N >= 3 else { return nil }
-        
-        var vol: Float = 0
-        // Side faces as two triangles per quad
-        for i in 0..<N {
-            let i0 = i
-            let i1 = (i + 1) % N
-            let t0 = t[i0], t1 = t[i1]
-            let b0 = b[i0], b1 = b[i1]
-            // triangles: (t0, t1, b0) and (b0, t1, b1)
-            vol += signedVolumeOfTriangle(t0, b0, t1)
-            vol += signedVolumeOfTriangle(t1, b0, b1)
-        }
-        // Caps: triangulate top and bottom and add signed volumes
-        let topTris = triangulatePolygon(t)
-        for tri in topTris { vol += signedVolumeOfTriangle(tri.0, tri.1, tri.2) }
-        let bottomTris = triangulatePolygon(b)
-        // Reverse winding for bottom cap so normals point outward consistently
-        for tri in bottomTris { vol += signedVolumeOfTriangle(tri.2, tri.1, tri.0) }
-        return abs(vol)
+        WoundGeometry.loftedVolume(top: top, bottom: bottom)
     }
     
     // Robust loft metrics in millimeters, with flags
     private func robustLoftMetricsMM(top: [SIMD3<Float>], bottom: [SIMD3<Float>]) -> (topAreaMM2: Float?, bottomAreaMM2: Float?, volumeMM3: Float?, flags: VolumeQualityFlags) {
-        var flags = VolumeQualityFlags(contourMismatch: false, incompleteOutline: false, bottomLargerThanTop: false, calibrationUncertainty: false)
-        guard top.count >= 3, bottom.count >= 3 else {
-            flags.incompleteOutline = true
-            return (nil, nil, nil, flags)
-        }
-        guard let loops = alignedResampledLoops(top: top, bottom: bottom, targetCount: max(top.count, bottom.count)) else {
-            flags.incompleteOutline = true
-            return (nil, nil, nil, flags)
-        }
-        let t = loops.t
-        let b = loops.b
-        let N = min(t.count, b.count)
-        
-        // Convert meters to millimeters
-        let scale: Float = 1000.0
-        let tMM = t.map { $0 * scale }
-        let bMM = b.map { $0 * scale }
-        
-        func planarAreaMM2(_ pts: [SIMD3<Float>]) -> Float {
-            guard pts.count >= 3 else { return 0 }
-            let normal = polygonNormal(pts)
-            let (u, v) = planeBasis(from: normal)
-            let origin = pts[0]
-            let pts2D: [CGPoint] = pts.map { p in
-                let d = p - origin
-                let x = CGFloat(simd_dot(d, u))
-                let y = CGFloat(simd_dot(d, v))
-                return CGPoint(x: x, y: y)
-            }
-            var area: CGFloat = 0
-            for i in 0..<pts2D.count {
-                let j = (i + 1) % pts2D.count
-                area += pts2D[i].x * pts2D[j].y - pts2D[j].x * pts2D[i].y
-            }
-            return Float(abs(area) * 0.5)
-        }
-        
-        let topAreaMM2 = planarAreaMM2(tMM)
-        let bottomAreaMM2 = planarAreaMM2(bMM)
-        
-        // Check if bottom area larger than top, flag it
-        if bottomAreaMM2 > topAreaMM2 {
-            flags.bottomLargerThanTop = true
-        }
-        
-        // Check contour mismatch: if distances between top and bottom points are large
-        let maxDistThresholdMM: Float = 100.0 // example threshold 10 cm
-        var maxDist: Float = 0
-        for i in 0..<N {
-            let d = simd_length(tMM[i] - bMM[i])
-            if d > maxDist { maxDist = d }
-        }
-        if maxDist > maxDistThresholdMM {
-            flags.contourMismatch = true
-        }
-        
-        // Compute volume in mm^3
-        var volMM3: Float = 0
-        for i in 0..<N {
-            let i0 = i
-            let i1 = (i + 1) % N
-            let t0 = tMM[i0], t1 = tMM[i1]
-            let b0 = bMM[i0], b1 = bMM[i1]
-            volMM3 += signedVolumeOfTriangle(t0, b0, t1)
-            volMM3 += signedVolumeOfTriangle(t1, b0, b1)
-        }
-        let topTris = triangulatePolygon(tMM)
-        for tri in topTris { volMM3 += signedVolumeOfTriangle(tri.0, tri.1, tri.2) }
-        let bottomTris = triangulatePolygon(bMM)
-        for tri in bottomTris { volMM3 += signedVolumeOfTriangle(tri.2, tri.1, tri.0) }
-        volMM3 = abs(volMM3)
-        
-        return (topAreaMM2, bottomAreaMM2, volMM3, flags)
+        WoundGeometry.robustLoftMetricsMM(top: top, bottom: bottom)
     }
     
     // MARK: - Metric Validation Helpers
@@ -891,24 +721,38 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        isVisible = true
+        cameraStartupRetryCount = 0
         scheduleARSessionStart()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        isVisible = false
         abortActiveScanForLifecycle()
+        segmentationGeneration &+= 1
+        isRunningSegmentation = false
+        clearWoundSegmentationCache()
         sessionStartWorkItem?.cancel()
         sessionStartWorkItem = nil
+        cameraStartupTimeout?.cancel()
+        cameraStartupTimeout = nil
         displayLink?.invalidate()
         displayLink = nil
         if sessionRunning {
-            sceneView.session.pause()
+            pauseCameraSession()
             sessionRunning = false
         }
     }
 
     private func abortActiveScanForLifecycle() {
-        guard isVolumetricLiDARScanning else { return }
+        guard isVolumetricLiDARScanning || isManualOutlineMode || guidedActive else { return }
+        isManualOutlineMode = false
+        guidedActive = false
+        guidedAutoFinishTimer?.invalidate(); guidedAutoFinishTimer = nil
+        manualTapSamplingTimer?.invalidate(); manualTapSamplingTimer = nil
+        metricsDebounceWorkItem?.cancel(); metricsDebounceWorkItem = nil
+        postManualOutlineState()
         volumetricScanTimer?.invalidate()
         volumetricScanTimer = nil
         volumetricFinalizationWorkItem?.cancel()
@@ -944,7 +788,10 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             quality: "low",
             segmentationApplied: false,
             volumeSource: "Scan interrupted",
-            measurementReady: false
+            measurementReady: false,
+            scanStage: "failed",
+            canConfirmWound: false,
+            canFinishCapture: false
         )
     }
 
@@ -980,10 +827,12 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         metricsDebounceWorkItem = nil
         sessionStartWorkItem?.cancel()
         sessionStartWorkItem = nil
+        cameraStartupTimeout?.cancel()
+        cameraStartupTimeout = nil
         hudHideWorkItem?.cancel()
         hudHideWorkItem = nil
 
-        sceneView.session.pause()
+        pauseCameraSession()
         segmentationGeneration &+= 1
         activeSegmentationGeneration = segmentationGeneration
         meshGeneration &+= 1
@@ -1005,6 +854,8 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         sceneView.autoenablesDefaultLighting = false
         sceneView.automaticallyUpdatesLighting = false
         sceneView.preferredFramesPerSecond = 30
+        sceneView.isPlaying = true
+        sceneView.rendersContinuously = true
         
         view.addSubview(sceneView)
         sceneView.translatesAutoresizingMaskIntoConstraints = false
@@ -1029,6 +880,18 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             edgeOverlayView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
         
+        // Screen-space outlines retain a visible width at every camera distance.
+        for layer in [woundHighlightHalo, woundHighlight] {
+            layer.lineJoin = .round
+            layer.lineCap = .round
+            layer.isHidden = true
+            view.layer.addSublayer(layer)
+        }
+        woundHighlightHalo.strokeColor = UIColor.black.withAlphaComponent(0.85).cgColor
+        woundHighlightHalo.fillColor = UIColor.clear.cgColor
+        woundHighlightHalo.lineWidth = 7
+        woundHighlight.lineWidth = 3.5
+
         // HUD label setup
         hudLabel.textAlignment = .center
         hudLabel.textColor = .white
@@ -1037,22 +900,21 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         hudLabel.layer.cornerRadius = 10
         hudLabel.layer.masksToBounds = true
         hudLabel.alpha = 0
-        hudLabel.numberOfLines = 2
+        hudLabel.numberOfLines = 0
         hudLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hudLabel)
         NSLayoutConstraint.activate([
             hudLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            hudLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            hudLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             hudLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 320)
         ])
         
         continuousScanningEnabled = true
 
-        // Session startup is deferred until viewDidAppear. Starting in viewDidLoad can race
-        // the first-run camera permission prompt and leave ARKit on a permanent black frame.
+        // Start only once attached to a window, with camera permission and an active app.
     }
 
-    private func scheduleARSessionStart(delay: TimeInterval = 0.12) {
+    private func scheduleARSessionStart(delay: TimeInterval = 0) {
         guard !didShutdown else { return }
         sessionStartWorkItem?.cancel()
 
@@ -1064,7 +926,8 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     }
 
     private func startARSessionWhenAuthorized() {
-        guard !didShutdown, viewIfLoaded?.window != nil else { return }
+        guard !didShutdown, isVisible, viewIfLoaded?.window != nil,
+              UIApplication.shared.applicationState == .active else { return }
 
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
@@ -1095,40 +958,76 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     }
 
     private func startARSession() {
-        guard !didShutdown, !sessionRunning, viewIfLoaded?.window != nil else { return }
+        guard !didShutdown, isVisible, !sessionRunning, viewIfLoaded?.window != nil else { return }
         guard ARWorldTrackingConfiguration.isSupported else {
             showHUDPrompt("AR World Tracking is not supported on this device.", duration: 4.0)
             return
         }
 
+        // Use one configuration per startup; reconfiguring while the camera is
+        // warming up can interrupt the first stream on some devices.
         let config = makeWorldTrackingConfiguration()
         let options: ARSession.RunOptions = shouldResetTrackingOnNextRun
             ? [.resetTracking, .removeExistingAnchors]
             : []
 
-        sceneView.session.run(config, options: options)
+        cameraRunStartedAt = CACurrentMediaTime()
+        isWaitingForFirstARFrame = true
+        sceneView.isPlaying = true
+        runCameraSession(config, options: options)
         sessionRunning = true
         shouldResetTrackingOnNextRun = false
-        isWaitingForFirstARFrame = true
-        showHUDPrompt("Starting LiDAR camera…", duration: 4.0)
-        startDisplayLinkIfNeeded()
+        showHUDPrompt("Starting LiDAR camera…", duration: 8.0)
+        cameraStartupTimeout?.cancel()
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self, self.isVisible, self.isWaitingForFirstARFrame, !self.didShutdown else { return }
+            if self.retryCameraStartupIfNeeded() { return }
+            self.showHUDPrompt("Camera not ready. Use Camera options to restart, or Skip to AI.", duration: 60)
+        }
+        cameraStartupTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: timeout)
     }
 
-    private func makeWorldTrackingConfiguration() -> ARWorldTrackingConfiguration {
+    private func makeWorldTrackingConfiguration(includeMapping: Bool = true) -> ARWorldTrackingConfiguration {
         let config = ARWorldTrackingConfiguration()
-        config.planeDetection = [.horizontal, .vertical]
+        config.planeDetection = includeMapping ? [.horizontal, .vertical] : []
 
-        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+        if includeMapping, ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
             config.sceneReconstruction = .mesh
         }
 
-        if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
-            config.frameSemantics.insert(.smoothedSceneDepth)
-        } else if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+        if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
             config.frameSemantics.insert(.sceneDepth)
         }
         config.environmentTexturing = .none
         return config
+    }
+
+    private func runCameraSession(_ configuration: ARWorldTrackingConfiguration, options: ARSession.RunOptions) {
+        let session = sceneView.session
+        cameraSessionQueue.async { session.run(configuration, options: options) }
+    }
+
+    private func pauseCameraSession() {
+        let session = sceneView.session
+        // Serialize pause after any pending run without blocking dismissal.
+        cameraSessionQueue.async { session.pause() }
+    }
+
+    @discardableResult
+    private func retryCameraStartupIfNeeded() -> Bool {
+        guard isVisible, !didShutdown, cameraStartupRetryCount < 1,
+              UIApplication.shared.applicationState == .active,
+              AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { return false }
+        cameraStartupRetryCount += 1
+        cameraStartupTimeout?.cancel()
+        isWaitingForFirstARFrame = false
+        sessionRunning = false
+        shouldResetTrackingOnNextRun = true
+        pauseCameraSession()
+        showHUDPrompt("Retrying LiDAR camera…", duration: 8)
+        scheduleARSessionStart(delay: 0.35)
+        return true
     }
 
     private func startDisplayLinkIfNeeded() {
@@ -1154,7 +1053,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     /// - Returns: The 3D world coordinate or nil.
     private func worldPointFromSceneDepth(_ screenPoint: CGPoint) -> SIMD3<Float>? {
         guard let frame = sceneView.session.currentFrame else { return nil }
-        let depthData = frame.smoothedSceneDepth ?? frame.sceneDepth
+        let depthData = frame.sceneDepth ?? frame.smoothedSceneDepth
         guard let depthMap = depthData?.depthMap else { return nil }
         
         let viewSize = sceneView.bounds.size
@@ -1175,21 +1074,14 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         let py = Int((cameraNorm.y * CGFloat(h)).rounded(.toNearestOrAwayFromZero))
         guard px >= 0, px < w, py >= 0, py < h else { return nil }
         
-        // Optional confidence gate: reject low-confidence depth.
-        if let conf = depthData?.confidenceMap {
-            let cw = CVPixelBufferGetWidth(conf)
-            let ch = CVPixelBufferGetHeight(conf)
-            if cw == w, ch == h {
-                CVPixelBufferLockBaseAddress(conf, .readOnly)
-                defer { CVPixelBufferUnlockBaseAddress(conf, .readOnly) }
-                if let base = CVPixelBufferGetBaseAddress(conf) {
-                    let row = base.advanced(by: py * CVPixelBufferGetBytesPerRow(conf))
-                    let c = row.load(fromByteOffset: px, as: UInt8.self)
-                    if c == 0 { return nil } // 0 = low confidence
-                }
-            }
-        }
-        
+        guard let conf = depthData?.confidenceMap,
+              CVPixelBufferGetWidth(conf) == w, CVPixelBufferGetHeight(conf) == h else { return nil }
+        CVPixelBufferLockBaseAddress(conf, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(conf, .readOnly) }
+        guard let confidenceBase = CVPixelBufferGetBaseAddress(conf) else { return nil }
+        let confidence = confidenceBase.advanced(by: py * CVPixelBufferGetBytesPerRow(conf)).load(fromByteOffset: px, as: UInt8.self)
+        guard confidence == 1 || confidence == 2 else { return nil }
+
         CVPixelBufferLockBaseAddress(depthMap, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(depthMap, .readOnly) }
         guard let base = CVPixelBufferGetBaseAddress(depthMap) else { return nil }
@@ -1563,149 +1455,180 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
 
     // MARK: - Observers
     
+    @objc private func suspendCameraForBackground() {
+        guard !didShutdown else { return }
+        abortActiveScanForLifecycle()
+        sessionStartWorkItem?.cancel()
+        cameraStartupTimeout?.cancel()
+        pauseCameraSession()
+        sceneView.isPlaying = false
+        sessionRunning = false
+        isWaitingForFirstARFrame = false
+    }
+
+    @objc private func resumeCameraAfterForeground() {
+        guard isVisible, !didShutdown else { return }
+        scheduleARSessionStart(delay: 0.2)
+    }
+
+    @objc private func restartWoundCamera() {
+        guard isVisible, !didShutdown else { return }
+        cameraStartupRetryCount = 0
+        suspendCameraForBackground()
+        invalidateWorldAnchoredWoundState()
+        shouldResetTrackingOnNextRun = true
+        scheduleARSessionStart()
+    }
+
     private func setupObservers() {
+        NotificationCenter.default.addObserver(self, selector: #selector(suspendCameraForBackground),
+            name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(resumeCameraAfterForeground),
+            name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(restartWoundCamera),
+            name: Notification.Name("RestartWoundCamera"), object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(resetARScene),
                                                name: NSNotification.Name("ResetARScene"),
-                                               object: nil)
+                                               object: notificationScope)
         
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(exportARScene),
                                                name: NSNotification.Name("ExportARScene"),
-                                               object: nil)
+                                               object: notificationScope)
         
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(toggleWireframe),
                                                name: NSNotification.Name("ToggleWireframe"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(toggleClassificationColors),
                                                name: NSNotification.Name("ToggleClassificationColors"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(enterMeshViewerMode),
                                                name: NSNotification.Name("EnterMeshViewerMode"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(exitMeshViewerMode),
                                                name: NSNotification.Name("ExitMeshViewerMode"),
-                                               object: nil)
+                                               object: notificationScope)
         
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(enableAutoSegmentation),
                                                name: NSNotification.Name("EnableAutoSegmentation"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(disableAutoSegmentation),
                                                name: NSNotification.Name("DisableAutoSegmentation"),
-                                               object: nil)
+                                               object: notificationScope)
         
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(runWoundAnalysisNow),
                                                name: NSNotification.Name("RunWoundAnalysisNow"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(runFreshWoundAnalysisNow),
                                                name: NSNotification.Name("RunFreshWoundAnalysisNow"),
-                                               object: nil)
+                                               object: notificationScope)
         /*
          NotificationCenter.default.addObserver(self,
          selector: #selector(handleManualOverlaysToggle(_:)),
          name: NSNotification.Name("ManualOverlaysChanged"),
-         object: nil)
+         object: notificationScope)
          */
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(startMeasureFlow),
                                                name: NSNotification.Name("StartMeasureFlow"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(startVolumetricLiDARScan),
                                                name: NSNotification.Name("StartVolumetricLiDARScan"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(confirmAutomaticWoundBoundary),
                                                name: NSNotification.Name("ConfirmAutomaticWoundBoundary"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(finishAutomaticPointCapture),
                                                name: NSNotification.Name("FinishAutomaticPointCapture"),
-                                               object: nil)
+                                               object: notificationScope)
         
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(startManualOutline),
                                                name: NSNotification.Name("StartManualOutline"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(finishManualOutline),
                                                name: NSNotification.Name("FinishManualOutline"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(clearManualOutline),
                                                name: NSNotification.Name("ClearManualOutline"),
-                                               object: nil)
+                                               object: notificationScope)
         
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(disableHUDPrompts),
                                                name: NSNotification.Name("DisableHUDPrompts"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(enableHUDPrompts),
                                                name: NSNotification.Name("EnableHUDPrompts"),
-                                               object: nil)
+                                               object: notificationScope)
         
         NotificationCenter.default.addObserver(self,
-                                               selector: #selector(startGuidedWoundMeasurement),
+                                               selector: #selector(startGuidedWoundMeasurement(_:)),
                                                name: NSNotification.Name("StartGuidedWoundMeasurement"),
-                                               object: nil)
+                                               object: notificationScope)
         
         // Extra manual measurement / editing notifications
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(startManualOutline),
                                                name: NSNotification.Name("EnterManualMeasurement"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(manualUndo),
                                                name: NSNotification.Name("ManualUndo"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(manualBackToRim),
                                                name: NSNotification.Name("ManualBackToRim"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(clearManualOutline),
                                                name: NSNotification.Name("ManualClear"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(finishManualOutline),
                                                name: NSNotification.Name("ManualFinish"),
-                                               object: nil)
+                                               object: notificationScope)
         
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(enableContinuousScanning),
                                                name: NSNotification.Name("EnableContinuousScanning"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(enableContinuousScanning),
                                                name: NSNotification.Name("EnableContinuousScan"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(disableContinuousScanning),
                                                name: NSNotification.Name("DisableContinuousScanning"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(disableContinuousScanning),
                                                name: NSNotification.Name("DisableContinuousScan"),
-                                               object: nil)
+                                               object: notificationScope)
         
         // Added generic button notification observers
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(finishManualOutline),
                                                name: NSNotification.Name("Finish"),
-                                               object: nil)
+                                               object: notificationScope)
         NotificationCenter.default.addObserver(self,
                                                selector: #selector(clearManualOutline),
                                                name: NSNotification.Name("Clear"),
-                                               object: nil)
+                                               object: notificationScope)
     }
     
     @objc private func enableAutoSegmentation() { isAutoSegmentationEnabled = true }
@@ -1739,7 +1662,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         hudHideWorkItem?.cancel()
         hudLabel.layer.removeAllAnimations()
         hudLabel.alpha = 0
-        hudLabel.text = "  \(message)  "
+        hudLabel.text = "  \(WoundL10n.text(message))  "
         UIView.animate(withDuration: 0.2) { self.hudLabel.alpha = 1 }
         let hideWorkItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -1754,8 +1677,8 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         hudHideWorkItem?.cancel()
         hudHideWorkItem = nil
         hudLabel.text = isVolumetricLiDARScanning && autoWoundTrackingLock == nil
-            ? "  Hold steady while the wound locks.  "
-            : hudMessageRefine
+            ? WoundL10n.text("  Hold steady while the wound locks.  ")
+            : WoundL10n.text(hudMessageRefine)
         UIView.animate(withDuration: 0.25) { self.hudLabel.alpha = 1 }
     }
     
@@ -1865,7 +1788,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             }
             if deferFinalizationToVolumetricScan,
                self.automaticScanStage == .mapping {
-                // The mapping timer owns the 11-second timeout. Keep accepting
+                // The mapping timer owns the bounded acquisition timeout. Keep accepting
                 // stable boundary observations until it succeeds or that timeout
                 // fires instead of leaving a silent three-second dead window.
                 return
@@ -1902,7 +1825,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             if !deferFinalizationToVolumetricScan {
                 NotificationCenter.default.post(
                     name: NSNotification.Name("AutoDetectionDidFinish"),
-                    object: nil,
+                    object: self.notificationScope,
                     userInfo: ["topOutlinePoints": top, "bottomOutlinePoints": bottom]
                 )
             }
@@ -1960,7 +1883,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             self.runWoundAnalysisNow()
         }
 
-        volumetricScanTimer = Timer.scheduledTimer(withTimeInterval: 0.55, repeats: true) { [weak self] timer in
+        volumetricScanTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] timer in
             guard let self = self else {
                 timer.invalidate()
                 return
@@ -1970,6 +1893,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             switch self.automaticScanStage {
             case .mapping:
                 let elapsed = now - self.volumetricScanStartedAt
+                if self.pauseForAutomaticBoundaryConfirmationIfReady() { return }
                 if elapsed >= self.volumetricBoundaryMappingTimeout {
                     self.failAutomaticBoundaryMapping()
                     return
@@ -2010,8 +1934,11 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
                 self.accumulateCurrentSurfaceSamples(maxCount: 1_200)
                 self.updatePointCloudVisualization()
                 let coverage = self.confirmedCaptureCoverage()
-                let elapsed = now - self.volumetricCaptureStartedAt
-                let message = self.confirmedCaptureGuidance(coverage)
+                self.updateCaptureEstimate(coverage: coverage)
+                let ready = coverage.canFinish && WoundCaptureConsistencyPolicy.hasConverged(self.captureEstimates)
+                let message = coverage.canFinish && !ready
+                    ? "Coverage captured. Keep scanning gently while measurements settle."
+                    : self.confirmedCaptureGuidance(coverage)
                 let progress = 0.34 + 0.66 * coverage.progress
 
                 if now - self.lastVolumetricPromptAt > 2.0 {
@@ -2027,15 +1954,11 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
                     volumeSource: "Confirmed wound point cloud",
                     scanStage: self.automaticScanStage.rawValue,
                     canConfirmWound: false,
-                    canFinishCapture: coverage.canFinish
+                    canFinishCapture: ready
                 )
 
-                if (elapsed >= self.volumetricCaptureDuration && coverage.canFinish)
-                    || elapsed >= self.volumetricCaptureMaximumDuration {
-                    timer.invalidate()
-                    self.volumetricScanTimer = nil
-                    self.finishVolumetricLiDARScan()
-                }
+                // Keep collecting until the user finishes a converged capture.
+                // A timer must never turn an incomplete cloud into a failed result.
 
             case .finalizing, .complete, .boundaryFailed, .idle:
                 if self.automaticScanStage != .finalizing {
@@ -2066,6 +1989,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             }
         }
         confirmedWoundSurfaceNormal = simd_length(normal) > 0.5 ? simd_normalize(normal) : lock.trackedNormal
+        configureConfirmedCoverageGrid()
         topOutlinePoints.wrappedValue = confirmedWoundWorldPolygon
         bottomOutlinePoints.wrappedValue.removeAll(keepingCapacity: true)
         outlinePhase.wrappedValue = .done
@@ -2095,11 +2019,11 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         ))
         accumulateCurrentSurfaceSamples(maxCount: 1_200, force: true)
         updatePointCloudVisualization(force: true)
-        showHUDPrompt("Boundary confirmed. Sweep slowly left, right, and slightly above it.", duration: 2.5)
+        showHUDPrompt("Boundary confirmed. Make a short, gentle sweep from one side to the other.", duration: 2.5)
         postVolumetricScanStatus(
             progress: 0.34,
             isScanning: true,
-            message: "Step 2 of 2: Move slowly around the wound while the green point cloud fills in.",
+            message: "Step 2 of 2: Aim for a 5–10 second gentle sweep. Keep the whole wound and nearby skin in view.",
             quality: "scanning",
             segmentationApplied: true,
             volumeSource: "Confirmed wound point cloud",
@@ -2112,8 +2036,9 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     @objc private func finishAutomaticPointCapture() {
         guard isVolumetricLiDARScanning, automaticScanStage == .capturing else { return }
         let coverage = confirmedCaptureCoverage()
-        guard coverage.canFinish else {
-            showHUDPrompt(confirmedCaptureGuidance(coverage), duration: 1.8)
+        updateCaptureEstimate(coverage: coverage)
+        guard coverage.canFinish, WoundCaptureConsistencyPolicy.hasConverged(captureEstimates) else {
+            showHUDPrompt(coverage.canFinish ? "Measurements are still settling. Keep scanning gently." : confirmedCaptureGuidance(coverage), duration: 1.8)
             return
         }
         volumetricScanTimer?.invalidate()
@@ -2147,7 +2072,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         postVolumetricScanStatus(
             progress: 0,
             isScanning: false,
-            message: "The wound edge did not stabilize. Recenter it and try mapping again.",
+            message: "Could not match a clear 3D boundary. Try another angle, Trace Mask, or Skip to AI.",
             quality: "low",
             segmentationApplied: false,
             volumeSource: "Wound boundary not confirmed",
@@ -2159,210 +2084,68 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         showHUDPrompt("Wound edge not stable. Recenter and try again.", duration: 2.2)
     }
 
-    private func finishVolumetricLiDARScan() {
-        guard !didFinalizeVolumetricMeasurement else { return }
-        guard validateContourForVolume(confirmedWoundWorldPolygon) else {
-            failAutomaticBoundaryMapping()
+    private func updateCaptureEstimate(coverage: ConfirmedCaptureCoverage) {
+        guard automaticScanStage == .capturing else { return }
+        guard coverage.hasSufficientEvidence else {
+            captureEstimates.removeAll(keepingCapacity: true)
             return
         }
-        automaticScanStage = .finalizing
+        let now = CACurrentMediaTime()
+        guard WoundDetectionFrameGate.isFresh(capturedAt: lastAcceptedSurfaceFrameAt, now: now, maximumAge: 2) else {
+            captureEstimates.removeAll(keepingCapacity: true)
+            return
+        }
+        guard now - lastCaptureEstimateAt >= WoundCaptureConsistencyPolicy.estimateInterval,
+              lastAcceptedSurfaceFrameAt > lastEstimatedSurfaceFrameAt else { return }
+        lastCaptureEstimateAt = now
+        lastEstimatedSurfaceFrameAt = lastAcceptedSurfaceFrameAt
+        guard let estimate = segmentationGuidedMeshEstimate(preferredBoundary: confirmedWoundWorldPolygon),
+              confidenceRank(estimate.confidence) >= 1 else {
+            captureEstimates.removeAll(keepingCapacity: true)
+            return
+        }
+        captureEstimates.append(VolumetricMetricSample(perimeter: estimate.perimeterCM,
+            area: estimate.areaCM2, volume: estimate.volumeCM3, qualityRank: confidenceRank(estimate.confidence)))
+        if captureEstimates.count > WoundCaptureConsistencyPolicy.requiredEstimates { captureEstimates.removeFirst() }
+        publishMetrics(perimeter: estimate.perimeterCM, area: estimate.areaCM2, volume: estimate.volumeCM3,
+            segmentationApplied: true, volumeSource: "Checking multi-view measurement consistency")
+    }
+
+    private func finishVolumetricLiDARScan() {
+        guard !didFinalizeVolumetricMeasurement,
+              automaticScanStage == .capturing,
+              confirmedCaptureCoverage().canFinish,
+              WoundCaptureConsistencyPolicy.hasConverged(captureEstimates),
+              WoundDetectionFrameGate.isFresh(capturedAt: lastAcceptedSurfaceFrameAt,
+                  now: CACurrentMediaTime(), maximumAge: 2) else { return }
+        // Freeze the same accepted estimates that enabled Finish. Recomputing
+        // from the last camera pose could otherwise invalidate or change them.
+        let area = medianValue(captureEstimates.map(\.area).sorted())!
+        let perimeter = medianValue(captureEstimates.map(\.perimeter).sorted())!
+        let volume = medianValue(captureEstimates.map(\.volume).sorted())!
+        let confidence = measurementConfidence(forRank: captureEstimates.map(\.qualityRank).min() ?? 1)
         volumetricScanTimer?.invalidate()
         volumetricScanTimer = nil
-
-        // Do not discard an observation that was already being processed when the
-        // nominal scan timer expired. Wait briefly only when the collected frames
-        // do not yet form a consensus and inference is still in flight.
-        let now = CACurrentMediaTime()
-        let hasTemporalConsensus = stabilizedVolumetricMetrics()?.hasConsensus == true
-        if !hasTemporalConsensus, isRunningSegmentation {
-            if volumetricFinalizationDeadline == 0 {
-                volumetricFinalizationDeadline = now + volumetricFinalizationGraceDuration
-            }
-            if now < volumetricFinalizationDeadline {
-                postVolumetricScanStatus(
-                    progress: 1,
-                    isScanning: true,
-                    message: "Finalizing measurement consistency…",
-                    quality: "scanning"
-                )
-                volumetricFinalizationWorkItem?.cancel()
-                let generation = segmentationGeneration
-                let retry = DispatchWorkItem { [weak self] in
-                    guard let self,
-                          !self.didShutdown,
-                          self.isVolumetricLiDARScanning,
-                          self.segmentationGeneration == generation else { return }
-                    self.finishVolumetricLiDARScan()
-                }
-                volumetricFinalizationWorkItem = retry
-                let remaining = volumetricFinalizationDeadline - now
-                DispatchQueue.main.asyncAfter(
-                    deadline: .now() + min(volumetricFinalizationPollInterval, remaining),
-                    execute: retry
-                )
-                return
-            }
-        }
-
-        volumetricFinalizationWorkItem?.cancel()
-        volumetricFinalizationWorkItem = nil
-        volumetricFinalizationDeadline = 0
         didFinalizeVolumetricMeasurement = true
-
-        let guidance = volumetricScanGuidance()
-        let top = confirmedWoundWorldPolygon
-        let bottom = bottomOutlinePoints.wrappedValue
-        var completionMessage = guidance.completionMessage
-        var completionQuality = guidance.quality
-        var measurementReady = false
-        var completionSegmentationApplied: Bool?
-        var completionVolumeSource: String?
-
-        if validateContourForVolume(top) {
-            if let deep = deepestPointInROI(boundary: top) {
-                selectedDepthPoint = deep
-                updateDepthPointNode()
-                updateDepthIndicatorLine()
-            }
-            commitFinalContours(top: top, bottom: bottom)
-            lastComputedPerimeter = nil
-            lastComputedArea = nil
-            lastComputedVolume = nil
-            isSuppressingMetricPublication = true
-            computeFinalVolume()
-            isSuppressingMetricPublication = false
-            let stable = publishStabilizedVolumetricMeasurement(
-                baseSource: "Confirmed wound point cloud"
-            )
-            completionMessage = stable == nil
-                ? "Scan finished, but the measurement needs another pass."
-                : "Stable volumetric measurement ready."
-            measurementReady = stable != nil
-            if let stable {
-                switch stable.confidence {
-                case .high: completionQuality = "high"
-                case .medium: completionQuality = "medium"
-                case .low: completionQuality = "low"
-                }
-            }
-            completionSegmentationApplied = measurementReady
-            if let temporal = stabilizedVolumetricMetrics(),
-               temporal.sampleCount >= minimumVolumetricMetricSamples {
-                completionVolumeSource = temporal.hasConsensus
-                    ? "Confirmed wound point cloud + stable boundary"
-                    : "Confirmed wound point cloud"
-            } else {
-                completionVolumeSource = "Confirmed wound point cloud"
-            }
-        } else if let estimate = liDARSurfaceEstimateFromCentralMesh() {
-            let source = estimate.usesSegmentation
-                ? "Segmentation + LiDAR mesh/depth"
-                : "LiDAR mesh/depth estimate"
-            lastComputedPerimeter = estimate.perimeterCM
-            lastComputedArea = estimate.areaCM2
-            lastComputedVolume = estimate.volumeCM3
-            latestSegmentationConfidence = estimate.confidence
-            let final = publishStabilizedVolumetricMeasurement(
-                baseSource: source,
-                segmentationApplied: estimate.usesSegmentation
-            )
-            measurementReady = final != nil
-            completionMessage = measurementReady
-                ? "LiDAR mesh measurement ready."
-                : "Scan finished, but the measurement needs another pass."
-            if let final {
-                switch final.confidence {
-                case .high: completionQuality = "high"
-                case .medium: completionQuality = "medium"
-                case .low: completionQuality = "low"
-                }
-            }
-            completionSegmentationApplied = estimate.usesSegmentation
-            completionVolumeSource = source
-        } else {
-            completionMessage = "Scan finished, but needs more LiDAR mesh coverage. Move around the wound and scan again."
-            completionQuality = "low"
-            completionSegmentationApplied = false
-            completionVolumeSource = "No current segmentation"
-        }
-        if !measurementReady {
-            completionQuality = "low"
-            let temporalFallback = stabilizedVolumetricMetrics()
-            let fallbackArea = (temporalFallback?.area ?? 0) > 0
-                ? (temporalFallback?.area ?? 0)
-                : max(0, lastComputedArea ?? 0)
-            let fallbackPerimeter = (temporalFallback?.perimeter ?? 0) > 0
-                ? (temporalFallback?.perimeter ?? 0)
-                : max(0, lastComputedPerimeter ?? 0)
-            let fallbackVolume = (lastComputedVolume ?? 0) > 0
-                ? max(0, lastComputedVolume ?? 0)
-                : max(0, temporalFallback?.volume ?? 0)
-
-            if fallbackArea.isFinite, fallbackArea > 0 {
-                // A readiness veto means "do not save yet", not "no measurement
-                // exists". Preserve the last world-verified values as preliminary
-                // instead of replacing them with a misleading all-zero result.
-                completionMessage = "Measurement captured. Scan again before saving for stronger consistency."
-                completionSegmentationApplied = autoWoundTrackingLock != nil
-                completionVolumeSource = "Preliminary stabilized LiDAR measurement"
-                publishMetrics(
-                    perimeter: fallbackPerimeter,
-                    area: fallbackArea,
-                    volume: fallbackVolume,
-                    segmentationApplied: completionSegmentationApplied,
-                    volumeSource: completionVolumeSource
-                )
-                onMeasurementState?(MeasurementState(
-                    area: fallbackArea,
-                    volume: fallbackVolume > 0 ? fallbackVolume : nil,
-                    isPreliminary: true,
-                    confidence: .low
-                ))
-            } else {
-                completionSegmentationApplied = false
-                completionVolumeSource = "Measurement not ready"
-                publishMetrics(
-                    perimeter: 0,
-                    area: 0,
-                    volume: 0,
-                    segmentationApplied: false,
-                    volumeSource: "Measurement not ready"
-                )
-            }
-        }
         isVolumetricLiDARScanning = false
         automaticScanStage = .complete
-        // Freeze this capture whether it succeeded or not. A new Measure Again action
-        // explicitly unlocks a fresh generation, while late callbacks from this run are ignored.
         isScanLocked = true
         continuousScanningEnabled = false
         isAutoSegmentationEnabled = false
         isRefiningWound = false
         segmentationGeneration &+= 1
-        updatePointCloudVisualization()
-
-        NotificationCenter.default.post(
-            name: NSNotification.Name("AutoDetectionDidFinish"),
-            object: nil,
-            userInfo: [
-                "topOutlinePoints": top,
-                "bottomOutlinePoints": bottom,
-                "measurementReady": measurementReady
-            ]
-        )
-        postVolumetricScanStatus(
-            progress: 1,
-            isScanning: false,
-            message: completionMessage,
-            quality: completionQuality,
-            segmentationApplied: completionSegmentationApplied,
-            volumeSource: completionVolumeSource,
-            measurementReady: measurementReady,
-            scanStage: automaticScanStage.rawValue,
-            canConfirmWound: false,
-            canFinishCapture: false
-        )
-        showHUDPrompt(completionMessage, duration: 2.0)
+        commitFinalContours(top: confirmedWoundWorldPolygon, bottom: [])
+        let source = "Confirmed multi-view LiDAR • three agreeing estimates"
+        publishMetrics(perimeter: perimeter, area: area, volume: volume,
+            segmentationApplied: true, volumeSource: source)
+        onMeasurementState?(MeasurementState(area: area, volume: volume,
+            isPreliminary: false, confidence: confidence))
+        postVolumetricScanStatus(progress: 1, isScanning: false,
+            message: "Measurements captured. Continue to AI with these measurements.",
+            quality: confidenceRank(confidence) >= 2 ? "high" : "medium",
+            segmentationApplied: true, volumeSource: source, measurementReady: true,
+            scanStage: automaticScanStage.rawValue, canConfirmWound: false, canFinishCapture: false)
+        updatePointCloudVisualization(force: true)
     }
 
     private func volumetricScanGuidance() -> (message: String, completionMessage: String, quality: String) {
@@ -2513,6 +2296,11 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     }
 
     private func resetAccumulatedSurfacePoints() {
+        confirmedCoverageGrid = nil
+        captureEstimates.removeAll(keepingCapacity: true)
+        lastCaptureEstimateAt = 0
+        lastAcceptedSurfaceFrameAt = 0
+        lastEstimatedSurfaceFrameAt = 0
         accumulatedSurfacePoints.removeAll(keepingCapacity: true)
         accumulatedSurfacePointKeys.removeAll(keepingCapacity: true)
         accumulatedSurfaceStartIndex = 0
@@ -2520,6 +2308,10 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         accumulatedRimSurfacePointKeys.removeAll(keepingCapacity: true)
         accumulatedRimSurfaceStartIndex = 0
         confirmedSurfaceCellViews.removeAll(keepingCapacity: true)
+        surfaceSummaryCache.removeAll(keepingCapacity: true)
+        verifiedSurfaceCells.removeAll(keepingCapacity: true)
+        verifiedCellEvidence.removeAll(keepingCapacity: true)
+        recheckingSurfaceCells.removeAll(keepingCapacity: true)
         captureViewpoints.removeAll(keepingCapacity: true)
         lastSurfaceAccumulationTime = 0
     }
@@ -2538,6 +2330,9 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         if isVolumetricLiDARScanning, !meshViewerMode {
             guard case .normal = frame.camera.trackingState else { return }
         }
+        guard surfaceFrameGate.submit(
+            capturedAt: frame.timestamp, now: now, maximumAge: autoWoundAcquisitionMaxAge
+        ) else { return }
         let orientation = view.window?.windowScene?.effectiveGeometry.interfaceOrientation ?? .portrait
         let capturePolygon = preferredSurfaceSamplingScreenPolygon(
             maxSegmentationAge: 30,
@@ -2583,6 +2378,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             addAccumulatedSurfacePoints(samples)
             if let viewpointCandidate {
                 let viewIndex = registerCaptureViewpoint(viewpointCandidate)
+                lastAcceptedSurfaceFrameAt = frame.timestamp
                 recordConfirmedSurfaceCells(
                     samples,
                     boundary: confirmedWoundWorldPolygon,
@@ -2625,7 +2421,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     }
 
     private func registerCaptureViewpoint(_ candidate: CaptureViewpoint) -> Int {
-        let sameDirectionLimit = cos(Float.pi / 180 * 7)
+        let sameDirectionLimit = cos(Float.pi / 180 * WoundCaptureConsistencyPolicy.viewSeparationDegrees)
         if let existing = captureViewpoints.firstIndex(where: { viewpoint in
             simd_dot(
                 viewpoint.woundToCameraDirection,
@@ -2697,17 +2493,36 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         }
     }
 
+    private func configureConfirmedCoverageGrid() {
+        let boundary = confirmedWoundWorldPolygon
+        let origin = centroid(of: boundary)
+        let normal = confirmedWoundSurfaceNormal ?? polygonNormal(boundary)
+        let (uAxis, vAxis) = planeBasis(from: normal)
+        let polygon = boundary.map { point -> SIMD2<Float> in
+            let delta = point - origin
+            return SIMD2(simd_dot(delta, uAxis), simd_dot(delta, vAxis))
+        }
+        var pixelSize: Float = 0
+        if let frame = sceneView.session.currentFrame, let depth = frame.sceneDepth?.depthMap {
+            let camera = frame.camera.transform.columns.3
+            let distance = simd_length(SIMD3(camera.x, camera.y, camera.z) - origin)
+            let fx = frame.camera.intrinsics.columns.0.x * Float(CVPixelBufferGetWidth(depth)) / Float(frame.camera.imageResolution.width)
+            if fx > 0 { pixelSize = distance / fx }
+        }
+        let size = WoundCoverageGrid.suggestedCellSize(areaM2: polygonArea2D(polygon), depthPixelM: pixelSize)
+        confirmedCoverageGrid = WoundCoverageGrid(polygon: polygon, cellSizeM: size)
+    }
+
     private func recordConfirmedSurfaceCells(
         _ points: [SIMD3<Float>],
         boundary: [SIMD3<Float>],
         viewIndex: Int
     ) {
-        guard boundary.count >= 3, !points.isEmpty else { return }
+        guard boundary.count >= 3, !points.isEmpty, let grid = confirmedCoverageGrid else { return }
         let origin = centroid(of: boundary)
         let normal = simd_normalize(confirmedWoundSurfaceNormal ?? polygonNormal(boundary))
         guard normal.x.isFinite, normal.y.isFinite, normal.z.isFinite else { return }
         let (uAxis, vAxis) = planeBasis(from: normal)
-        let cellSizeM = accumulatedPointVoxelSizeM
         var frameCells: [SurfacePlaneCellKey: SurfacePlaneCellAccumulator] = [:]
 
         for point in points {
@@ -2716,10 +2531,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             let v = simd_dot(delta, vAxis)
             let offset = simd_dot(delta, normal)
             guard u.isFinite, v.isFinite, offset.isFinite else { continue }
-            let cell = SurfacePlaneCellKey(
-                u: Int32(clamping: Int((u / cellSizeM).rounded())),
-                v: Int32(clamping: Int((v / cellSizeM).rounded()))
-            )
+            guard let cell = grid.cell(u: u, v: v) else { continue }
             var accumulator = frameCells[cell] ?? SurfacePlaneCellAccumulator(
                 uSum: 0,
                 vSum: 0,
@@ -2733,9 +2545,25 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             frameCells[cell] = accumulator
         }
 
+        if !frameCells.isEmpty { surfaceSummaryCache.removeAll(keepingCapacity: true) }
         for (cell, frameAccumulator) in frameCells {
             guard frameAccumulator.count > 0,
                   let medianOffset = medianValue(frameAccumulator.normalOffsets.sorted()) else { continue }
+            if var evidence = verifiedCellEvidence[cell] {
+                evidence.observe(offset: medianOffset, view: viewIndex)
+                if evidence.isInvalidated {
+                    verifiedSurfaceCells.removeValue(forKey: cell)
+                    verifiedCellEvidence.removeValue(forKey: cell)
+                    recheckingSurfaceCells.insert(cell)
+                    // Discard old observations before allowing this patch to
+                    // qualify again. Only fresh cross-view evidence can restore it.
+                    for oldView in captureViewpoints.indices {
+                        confirmedSurfaceCellViews.removeValue(forKey: SurfaceCellViewKey(cell: cell, view: Int16(clamping: oldView)))
+                    }
+                } else {
+                    verifiedCellEvidence[cell] = evidence
+                }
+            }
             let count = Float(frameAccumulator.count)
             let key = SurfaceCellViewKey(cell: cell, view: Int16(clamping: viewIndex))
             var accumulator = confirmedSurfaceCellViews[key] ?? SurfacePlaneCellAccumulator(
@@ -2805,15 +2633,20 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         inside boundary: [SIMD3<Float>]
     ) -> [ConfirmedSurfaceCellSummary] {
         guard boundary.count >= 3, !confirmedSurfaceCellViews.isEmpty else { return [] }
-        let origin = centroid(of: boundary)
-        let normal = simd_normalize(confirmedWoundSurfaceNormal ?? polygonNormal(boundary))
+        // Stored u/v offsets always use the original confirmed coordinate frame,
+        // even when measurement requests a resampled version of its boundary.
+        let basisBoundary = confirmedCoverageGrid == nil ? boundary : confirmedWoundWorldPolygon
+        let origin = centroid(of: basisBoundary)
+        let normal = simd_normalize(confirmedWoundSurfaceNormal ?? polygonNormal(basisBoundary))
         guard normal.x.isFinite, normal.y.isFinite, normal.z.isFinite else { return [] }
+        if let cached = surfaceSummaryCache.first(where: { $0.boundary == boundary && $0.normal == normal }) {
+            return cached.summaries
+        }
         let (uAxis, vAxis) = planeBasis(from: normal)
         var observations: [SurfacePlaneCellKey: [(u: Float, v: Float, offset: Float)]] = [:]
 
         for (key, accumulator) in confirmedSurfaceCellViews {
-            guard accumulator.count > 0,
-                  let offset = medianValue(accumulator.normalOffsets.sorted()) else { continue }
+            guard let offset = WoundCaptureConsistencyPolicy.stableViewOffset(accumulator.normalOffsets) else { continue }
             let count = Float(accumulator.count)
             observations[key.cell, default: []].append((
                 u: accumulator.uSum / count,
@@ -2822,15 +2655,14 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             ))
         }
 
-        return observations.compactMap { cell, values -> ConfirmedSurfaceCellSummary? in
-            guard !values.isEmpty else { return nil }
+        let candidates = observations.compactMap { cell, values -> ConfirmedSurfaceCellSummary? in
+            guard !values.isEmpty, verifiedCellEvidence[cell]?.isInvalidated != true else { return nil }
             let offsets = values.map(\.offset).sorted()
             guard let centerOffset = medianValue(offsets) else { return nil }
-            let deviations = offsets.map { abs($0 - centerOffset) }.sorted()
-            let mad = medianValue(deviations) ?? 0
-            let tolerance = max(0.0015, mad * 3.0)
-            let inliers = values.filter { abs($0.offset - centerOffset) <= tolerance }
-            guard !inliers.isEmpty else { return nil }
+            // A high MAD must not widen the acceptance window for inconsistent points.
+            let agreeing = WoundCaptureConsistencyPolicy.agreeingIndices(values.map(\.offset))
+            guard !agreeing.isEmpty else { return nil }
+            let inliers = agreeing.map { values[$0] }
             let divisor = Float(inliers.count)
             let u = inliers.reduce(0) { $0 + $1.u } / divisor
             let v = inliers.reduce(0) { $0 + $1.v } / divisor
@@ -2840,19 +2672,37 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             return ConfirmedSurfaceCellSummary(
                 key: cell,
                 point: point,
-                viewCount: values.count,
-                offsetMAD: mad
+                viewCount: inliers.count,
+                offsetMAD: medianValue(inliers.map { abs($0.offset - finalOffset) }.sorted()) ?? 0
             )
         }
+        // The original verified point remains the measurement point. We never
+        // fabricate coverage by keeping only a high-water percentage.
+        for candidate in candidates where verifiedSurfaceCells[candidate.key] == nil {
+            verifiedSurfaceCells[candidate.key] = candidate
+            recheckingSurfaceCells.remove(candidate.key)
+            verifiedCellEvidence[candidate.key] = WoundVerifiedCellEvidence(
+                offset: simd_dot(candidate.point - origin, normal)
+            )
+        }
+        let summaries = verifiedSurfaceCells.values.sorted {
+            if $0.key.u != $1.key.u { return $0.key.u < $1.key.u }
+            return $0.key.v < $1.key.v
+        }
+        if surfaceSummaryCache.count >= 3 { surfaceSummaryCache.removeFirst() }
+        surfaceSummaryCache.append(SurfaceSummaryCacheEntry(boundary: boundary, normal: normal, summaries: summaries))
+        return summaries
     }
 
     private struct ConfirmedCaptureCoverage {
+        let seenCells: Int
         let occupiedCells: Int
         let expectedCells: Int
         let stableMultiViewCells: Int
         let viewpointCount: Int
         let rimPointCount: Int
         let progress: Double
+        let hasSufficientEvidence: Bool
         let canFinish: Bool
         let quality: String
     }
@@ -2860,33 +2710,22 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     private func confirmedCaptureCoverage() -> ConfirmedCaptureCoverage {
         let boundary = confirmedWoundWorldPolygon
         let summaries = confirmedSurfaceCellSummaries(inside: boundary)
-            .filter { $0.viewCount < 2 || $0.offsetMAD <= 0.006 }
-        let areaM2: Float = {
-            guard boundary.count >= 3 else { return 0 }
-            let origin = centroid(of: boundary)
-            let normal = simd_normalize(confirmedWoundSurfaceNormal ?? polygonNormal(boundary))
-            let (uAxis, vAxis) = planeBasis(from: normal)
-            let points = boundary.map { point -> SIMD2<Float> in
-                let delta = point - origin
-                return SIMD2<Float>(simd_dot(delta, uAxis), simd_dot(delta, vAxis))
-            }
-            return polygonArea2D(points)
-        }()
-        let cellAreaM2 = accumulatedPointVoxelSizeM * accumulatedPointVoxelSizeM
-        let expectedCells = max(5, Int((areaM2 / max(cellAreaM2, 0.000_000_1)).rounded()))
+            .filter { $0.viewCount >= 2 && $0.offsetMAD <= WoundCaptureConsistencyPolicy.maximumOffsetDeviation }
+        let expectedCells = confirmedCoverageGrid?.cells.count ?? 0
+        let seenCells = Set(confirmedSurfaceCellViews.keys.map(\.cell)).count
         let occupiedCells = summaries.count
         let stableMultiViewCells = summaries.reduce(into: 0) { count, summary in
             if summary.viewCount >= 2, summary.offsetMAD <= 0.0035 { count += 1 }
         }
-        let targetCells = max(5, Int(ceil(Double(expectedCells) * 0.55)))
-        let targetMultiViewCells = max(3, Int(ceil(Double(targetCells) * 0.20)))
+        let targetCells = max(5, Int(ceil(Double(expectedCells) * WoundCaptureConsistencyPolicy.coverageFraction)))
+        let targetMultiViewCells = max(3, Int(ceil(Double(targetCells))))
         let cellProgress = min(1, Double(occupiedCells) / Double(max(1, targetCells)))
         let multiViewProgress = min(
             1,
             Double(stableMultiViewCells) / Double(max(1, targetMultiViewCells))
         )
-        let viewpointProgress = min(1, Double(captureViewpoints.count) / 3.0)
-        let rimProgress = min(1, Double(accumulatedRimSurfacePoints.count) / 24.0)
+        let viewpointProgress = min(1, Double(captureViewpoints.count) / Double(WoundCaptureConsistencyPolicy.minimumViews))
+        let rimProgress = min(1, Double(accumulatedRimSurfacePoints.count) / Double(WoundCaptureConsistencyPolicy.minimumRimPoints))
         let progress = cellProgress * 0.50
             + multiViewProgress * 0.20
             + viewpointProgress * 0.20
@@ -2894,32 +2733,37 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         let elapsed = volumetricCaptureStartedAt > 0
             ? CACurrentMediaTime() - volumetricCaptureStartedAt
             : 0
-        let canFinish = occupiedCells >= targetCells
-            && stableMultiViewCells >= targetMultiViewCells
-            && captureViewpoints.count >= 3
-            && accumulatedRimSurfacePoints.count >= 24
-            && elapsed >= 4.0
+        let hasSufficientEvidence = WoundCaptureConsistencyPolicy.hasSufficientEvidence(
+            expectedCells: expectedCells, verifiedCells: stableMultiViewCells,
+            viewpoints: captureViewpoints.count, rimPoints: accumulatedRimSurfacePoints.count
+        )
+        let canFinish = WoundCaptureConsistencyPolicy.hasCoverage(
+            expectedCells: expectedCells, verifiedCells: stableMultiViewCells,
+            viewpoints: captureViewpoints.count, rimPoints: accumulatedRimSurfacePoints.count, elapsed: elapsed
+        )
         let coverageFraction = Double(occupiedCells) / Double(max(1, expectedCells))
         let multiViewFraction = Double(stableMultiViewCells) / Double(max(1, occupiedCells))
         let quality: String
-        if canFinish,
+        if hasSufficientEvidence,
            coverageFraction >= 0.72,
            multiViewFraction >= 0.35,
            captureViewpoints.count >= 4,
            accumulatedRimSurfacePoints.count >= 32 {
             quality = "high"
-        } else if canFinish {
+        } else if hasSufficientEvidence {
             quality = "medium"
         } else {
             quality = "low"
         }
         return ConfirmedCaptureCoverage(
+            seenCells: seenCells,
             occupiedCells: occupiedCells,
             expectedCells: expectedCells,
             stableMultiViewCells: stableMultiViewCells,
             viewpointCount: captureViewpoints.count,
             rimPointCount: accumulatedRimSurfacePoints.count,
             progress: min(1, progress),
+            hasSufficientEvidence: hasSufficientEvidence,
             canFinish: canFinish,
             quality: quality
         )
@@ -2933,20 +2777,32 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
                 return "Tracking paused. Hold steady until the camera recovers."
             }
         }
-        if coverage.viewpointCount < 2 {
-            return "Sweep slowly to one side while keeping the wound in view."
+        let target = WoundCaptureConsistencyPolicy.coveragePercent
+        let seen = min(100, Int(Double(coverage.seenCells) / Double(max(1, coverage.expectedCells)) * 100))
+        let verified = min(100, Int(Double(coverage.occupiedCells) / Double(max(1, coverage.expectedCells)) * 100))
+        if coverage.viewpointCount < WoundCaptureConsistencyPolicy.minimumViews {
+            let direction = coverage.viewpointCount < 2 ? "Move slowly to one side." :
+                (coverage.viewpointCount < 3 ? "Move across to the other side." : "Tilt above or below the wound.")
+            return "Angles \(coverage.viewpointCount)/\(WoundCaptureConsistencyPolicy.minimumViews) · verified \(verified)%. \(direction)"
         }
-        if coverage.viewpointCount < 3 {
-            return "Now sweep across to the other side of the wound."
+        if !recheckingSurfaceCells.isEmpty, verified < target {
+            return "Verified \(verified)% / \(target)% · rechecking \(recheckingSurfaceCells.count) patches. Revisit them from another angle."
+        }
+        if seen >= target, verified < target {
+            return "Seen \(seen)% · verified \(verified)% / \(target)%. Make a small side-to-side sweep; keep the wound centered."
         }
         if coverage.stableMultiViewCells < 3 {
             return "Move a little farther around the wound so points overlap from another angle."
         }
-        if coverage.rimPointCount < 24 {
+        if coverage.rimPointCount < WoundCaptureConsistencyPolicy.minimumRimPoints {
             return "Keep the wound edge and a small ring of nearby skin in view."
         }
+        if coverage.hasSufficientEvidence, !coverage.canFinish {
+            return "Coverage captured. Hold briefly while measurements are checked."
+        }
         if !coverage.canFinish {
-            return "Good sweep. Tilt slightly to fill the remaining green gaps."
+            let percent = min(100, Int(Double(coverage.occupiedCells) / Double(max(1, coverage.expectedCells)) * 100))
+            return "Verified coverage \(percent)% · aim for \(target)%. Sweep slowly over the gaps from another angle."
         }
         return coverage.quality == "high"
             ? "Excellent coverage. You can finish the scan."
@@ -2962,11 +2818,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
               !accumulatedSurfacePoints.isEmpty else { return [] }
 
         let confirmedCells = confirmedSurfaceCellSummaries(inside: boundary)
-            .filter { $0.viewCount < 2 || $0.offsetMAD <= 0.006 }
-            .sorted {
-                if $0.key.u != $1.key.u { return $0.key.u < $1.key.u }
-                return $0.key.v < $1.key.v
-            }
+            .filter { $0.viewCount >= 2 && $0.offsetMAD <= WoundCaptureConsistencyPolicy.maximumOffsetDeviation }
         if !confirmedCells.isEmpty {
             guard confirmedCells.count > maxCount else { return confirmedCells.map(\.point) }
             let step = Double(confirmedCells.count) / Double(maxCount)
@@ -3363,10 +3215,9 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
                     return confidenceBase.advanced(by: sampleY * CVPixelBufferGetBytesPerRow(confidenceMap))
                 }()
                 for sampleX in max(0, x - radius)...min(depthWidth - 1, x + radius) {
-                    if let confidenceRow,
-                       confidenceRow.load(fromByteOffset: sampleX, as: UInt8.self) == 0 {
-                        continue
-                    }
+                    guard let confidenceRow else { continue }
+                    let confidence = confidenceRow.load(fromByteOffset: sampleX, as: UInt8.self)
+                    guard confidence == 1 || confidence == 2 else { continue }
                     let value = depthRow.load(
                         fromByteOffset: sampleX * MemoryLayout<Float>.size,
                         as: Float.self
@@ -3642,7 +3493,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         switch mode {
         case .acquisition:
             radius = max(referenceRadius, candidate.radiusM)
-        case .tracking, .anchorEnvelope:
+        case .mappingConfirmation, .tracking, .anchorEnvelope:
             radius = referenceRadius
         }
         let bounded: (Float, Float, Float) -> Float = { value, lower, upper in
@@ -3664,6 +3515,16 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             minimumNormalAgreement = 0.866
             p95BoundaryMultiplier = 1.80
             maximumBoundaryMultiplier = 4.00
+        case .mappingConfirmation:
+            // Allow small segmentation/depth fluctuations while the user is
+            // acquiring a boundary. Post-confirmation tracking stays stricter.
+            tangentLimit = bounded(radius * 0.55, 0.006, 0.014)
+            normalLimit = bounded(radius * 0.32, 0.004, 0.010)
+            boundaryLimit = bounded(radius * 0.34, 0.005, 0.010)
+            areaRange = 0.72...1.38
+            minimumNormalAgreement = 0.94
+            p95BoundaryMultiplier = 1.65
+            maximumBoundaryMultiplier = 2.75
         case .tracking:
             tangentLimit = bounded(radius * 0.40, 0.004, 0.010)
             normalLimit = bounded(radius * 0.24, 0.003, 0.008)
@@ -3761,7 +3622,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
                     referenceArea: lock.anchorAreaCM2,
                     referencePolygon: lock.anchorWorldPolygon,
                     candidate: observation,
-                    mode: .tracking
+                    mode: .mappingConfirmation
                 ) else {
                     noteRejectedAutoWoundObservation()
                     return nil
@@ -3776,7 +3637,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
                 autoWoundRejectCount = 0
                 lock.acceptedCount += 1
                 autoWoundTrackingLock = lock
-                lastAcceptedAutoWoundAt = CACurrentMediaTime()
+                lastAcceptedAutoWoundAt = observation.capturedAt
                 return AutoWoundAssociation(
                     screenPolygon: projected,
                     worldPolygon: lock.anchorWorldPolygon,
@@ -3836,7 +3697,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
                 return nil
             }
             autoWoundTrackingLock = lock
-            lastAcceptedAutoWoundAt = CACurrentMediaTime()
+            lastAcceptedAutoWoundAt = observation.capturedAt
             return AutoWoundAssociation(
                 screenPolygon: projected,
                 worldPolygon: lock.displayWorldPolygon,
@@ -3921,8 +3782,8 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         )
         pendingAutoWoundObservations.removeAll(keepingCapacity: true)
         autoWoundRejectCount = 0
-        lastAcceptedAutoWoundAt = CACurrentMediaTime()
-        showHUDPrompt("Wound locked. Move slowly around it.", duration: 1.3)
+        lastAcceptedAutoWoundAt = observation.capturedAt
+        showHUDPrompt("Wound found. Review the green outline.", duration: 1.3)
         return AutoWoundAssociation(
             screenPolygon: projected,
             worldPolygon: lockedContour,
@@ -3950,8 +3811,15 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         guard isVolumetricLiDARScanning,
               automaticScanStage == .mapping,
               let lock = autoWoundTrackingLock,
-              lock.acceptedCount >= minimumConfirmedObservationCount,
-              stablePolygonCount >= requiredStableChecks,
+              WoundBoundaryReviewPolicy.canReview(
+                  matchingObservations: lock.acceptedCount,
+                  capturedAt: lastAcceptedAutoWoundAt,
+                  scanStartedAt: volumetricScanStartedAt,
+                  now: CACurrentMediaTime(), maximumAge: autoWoundAcquisitionMaxAge
+              ),
+              let frame = sceneView.session.currentFrame,
+              case .normal = frame.camera.trackingState,
+              projectVisibleContourToScreen(lock.displayWorldPolygon) != nil,
               validateContourForVolume(lock.displayWorldPolygon) else { return false }
 
         // Stop the inference generation before presenting the outline. The user
@@ -4401,7 +4269,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             : nil
         let confidence: MeasurementState.Confidence
         if let confirmedCoverage,
-           confirmedCoverage.canFinish,
+           confirmedCoverage.hasSufficientEvidence,
            confirmedCoverage.quality == "high",
            depthStats.sampleCount >= 80,
            depthStats.positiveDepthSampleCount >= max(20, depthStats.sampleCount / 4),
@@ -4409,7 +4277,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
            baseline.hasCoherentRimSupport {
             confidence = .high
         } else if let confirmedCoverage,
-                  confirmedCoverage.canFinish,
+                  confirmedCoverage.hasSufficientEvidence,
                   depthStats.sampleCount >= 20,
                   depthStats.positiveDepthSampleCount >= max(5, depthStats.sampleCount / 10) {
             confidence = .medium
@@ -4789,6 +4657,12 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             // The rolling post-lock cloud survives a transient empty depth frame and
             // is also the cloud consumed by the final LiDAR-guided measurement.
             let source: [SIMD3<Float>] = {
+                if !meshViewerMode, confirmedCoverageGrid != nil {
+                    // Render the same anchored, verified points used by measurement.
+                    // Do not alternate between noisy raw depth and verified cells
+                    // while changing viewpoints or while coverage is still sparse.
+                    return confirmedSurfaceCellSummaries(inside: confirmedWoundWorldPolygon).map(\.point)
+                }
                 guard !meshViewerMode,
                       let boundary = lockedMeasurementWorldPolygon else {
                     return accumulatedSurfacePoints
@@ -4970,7 +4844,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
 
         NotificationCenter.default.post(
             name: NSNotification.Name("LiDARScanStatusDidUpdate"),
-            object: nil,
+            object: notificationScope,
             userInfo: userInfo
         )
     }
@@ -5035,7 +4909,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         isRefiningWound = false
         outlinePhase.wrappedValue = .top
         lastManualMetricsPreviewTime = 0
-        NotificationCenter.default.post(name: NSNotification.Name("ARShowOverlays"), object: nil)
+        NotificationCenter.default.post(name: NSNotification.Name("ARShowOverlays"), object: notificationScope)
         showHUDPrompt("Tap around the wound to outline the top surface")
     }
     
@@ -5394,7 +5268,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
 
         NotificationCenter.default.post(
             name: NSNotification.Name("MetricsUpdated"),
-            object: nil,
+            object: notificationScope,
             userInfo: userInfo
         )
     }
@@ -5433,84 +5307,17 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         }
     }
 
-    private struct RobustCentralEstimate {
-        let value: Float
-        let inlierCount: Int
-        let relativeMAD: Float
-    }
 
-    private struct StabilizedVolumetricEstimate {
-        let perimeter: Float
-        let area: Float
-        let volume: Float
-        let hasConsensus: Bool
-        let qualityRank: Int
-        let sampleCount: Int
-        let positiveVolumeSampleCount: Int
-    }
+
+    private typealias StabilizedVolumetricEstimate = WoundMeasurementConsistency.StabilizedVolumetricEstimate
 
     private func stabilizedVolumetricMetrics() -> StabilizedVolumetricEstimate? {
-        guard !volumetricMetricSamples.isEmpty else { return nil }
-        let mediumOrBetter = volumetricMetricSamples.filter { $0.qualityRank >= 1 }
-        let candidates = mediumOrBetter.count >= minimumVolumetricMetricSamples
-            ? mediumOrBetter
-            : volumetricMetricSamples
-
-        guard let area = robustCentralEstimate(candidates.map(\.area)), area.value > 0 else { return nil }
-        let perimeter = robustCentralEstimate(candidates.map(\.perimeter).filter { $0 > 0 })
-        let positiveVolumes = candidates.map(\.volume).filter { $0 > 0 }
-        let volume = robustCentralEstimate(positiveVolumes)
-        // Three agreeing observations remain preferred. On slower devices, two
-        // medium-quality observations may also finalize only when both area and
-        // volume agree tightly; a single segmentation frame is never sufficient.
-        // A robust majority is enough; one drifting inference must not veto an
-        // otherwise repeatable scan, while two-sample scans still require both.
-        let consensusSampleCount = max(
-            minimumVolumetricMetricSamples,
-            candidates.count / 2 + 1
-        )
-        // With two readings, relative MAD is half their pairwise difference around
-        // the mean. Halving these limits enforces the intended 12% area and 20%
-        // volume maximum differences for the slow-device fallback.
-        let areaMADLimit: Float = candidates.count == 2 ? 0.06 : 0.12
-        let volumeMADLimit: Float = candidates.count == 2 ? 0.10 : 0.20
-        let volumeHasConsensus = positiveVolumes.isEmpty
-            || (volume?.inlierCount ?? 0) >= consensusSampleCount
-                && (volume?.relativeMAD ?? 1) <= volumeMADLimit
-        let hasConsensus = candidates.count >= minimumVolumetricMetricSamples
-            && mediumOrBetter.count >= consensusSampleCount
-            && area.inlierCount >= consensusSampleCount
-            && area.relativeMAD <= areaMADLimit
-            && volumeHasConsensus
-        let sortedQuality = candidates.map(\.qualityRank).sorted()
-        let qualityRank = sortedQuality[sortedQuality.count / 2]
-
-        return StabilizedVolumetricEstimate(
-            perimeter: perimeter?.value ?? 0,
-            area: area.value,
-            volume: volume?.value ?? 0,
-            hasConsensus: hasConsensus,
-            qualityRank: qualityRank,
-            sampleCount: candidates.count,
-            positiveVolumeSampleCount: positiveVolumes.count
+        WoundMeasurementConsistency.stabilizedVolumetricMetrics(
+            volumetricMetricSamples, minimumVolumetricMetricSamples: minimumVolumetricMetricSamples
         )
     }
 
-    private func robustCentralEstimate(_ values: [Float]) -> RobustCentralEstimate? {
-        let finite = values.filter(\.isFinite).sorted()
-        guard let center = medianValue(finite) else { return nil }
-        let deviations = finite.map { abs($0 - center) }.sorted()
-        let mad = medianValue(deviations) ?? 0
-        let tolerance = max(0.001, max(abs(center) * 0.08, mad * 3.0))
-        let inliers = finite.filter { abs($0 - center) <= tolerance }
-        let value = medianValue(inliers) ?? center
-        let relativeMAD = mad / max(abs(center), 0.001)
-        return RobustCentralEstimate(
-            value: value,
-            inlierCount: inliers.count,
-            relativeMAD: relativeMAD
-        )
-    }
+
 
     private func medianValue(_ sortedValues: [Float]) -> Float? {
         guard !sortedValues.isEmpty else { return nil }
@@ -5683,10 +5490,11 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         postManualOutlineState()
     }
     
-    @objc private func startGuidedWoundMeasurement() {
-        let detectedTop = validateContourForVolume(topOutlinePoints.wrappedValue)
-            ? topOutlinePoints.wrappedValue
-            : latestWoundSegmentationWorldPolygon
+    @objc private func startGuidedWoundMeasurement(_ notification: Notification) {
+        let startFresh = notification.userInfo?["startFresh"] as? Bool ?? false
+        let detectedTop: [SIMD3<Float>] = startFresh ? [] :
+            (validateContourForVolume(topOutlinePoints.wrappedValue)
+             ? topOutlinePoints.wrappedValue : latestWoundSegmentationWorldPolygon)
         let existingDepthPoint = selectedDepthPoint
         volumetricScanTimer?.invalidate()
         volumetricScanTimer = nil
@@ -5714,7 +5522,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             shouldReplaceManualSeedOnNextInput = true
         }
         
-        NotificationCenter.default.post(name: NSNotification.Name("ARShowOverlays"), object: nil)
+        NotificationCenter.default.post(name: NSNotification.Name("ARShowOverlays"), object: notificationScope)
         refreshCurrentManualOverlay(force: true)
         if shouldReplaceManualSeedOnNextInput {
             showHUDPrompt("Existing edge shown. Trace to replace it, or keep it and tap Next.", duration: 2.6)
@@ -6102,99 +5910,15 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     }
     
     private func triangulatePolygon(_ points: [SIMD3<Float>]) -> [(SIMD3<Float>, SIMD3<Float>, SIMD3<Float>)] {
-        guard points.count >= 3 else { return [] }
-        
-        let normal = polygonNormal(points)
-        let (u, v) = planeBasis(from: normal)
-        let origin = points[0]
-        
-        var pts2D: [CGPoint] = points.map { p in
-            let d = p - origin
-            let x = CGFloat(simd_dot(d, u))
-            let y = CGFloat(simd_dot(d, v))
-            return CGPoint(x: x, y: y)
-        }
-        
-        var indices = Array(0..<points.count)
-        var tris: [(SIMD3<Float>, SIMD3<Float>, SIMD3<Float>)] = []
-        
-        func area(_ a: CGPoint, _ b: CGPoint, _ c: CGPoint) -> CGFloat {
-            return 0.5 * ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x))
-        }
-        
-        func isCCW() -> Bool {
-            var sum: CGFloat = 0
-            for i in 0..<pts2D.count {
-                let a = pts2D[i]
-                let b = pts2D[(i + 1) % pts2D.count]
-                sum += (b.x - a.x) * (b.y + a.y)
-            }
-            return sum < 0
-        }
-        
-        if !isCCW() {
-            pts2D.reverse()
-            indices.reverse()
-        }
-        
-        var guardCounter = 0
-        while indices.count >= 3 && guardCounter < 1000 {
-            guardCounter += 1
-            var earFound = false
-            for i in 0..<indices.count {
-                let i0 = (i - 1 + indices.count) % indices.count
-                let i1 = i
-                let i2 = (i + 1) % indices.count
-                
-                let a = pts2D[i0]
-                let b = pts2D[i1]
-                let c = pts2D[i2]
-                
-                if area(a, b, c) <= 0 { continue }
-                
-                var contains = false
-                for j in 0..<indices.count where j != i0 && j != i1 && j != i2 {
-                    if pointInTriangle(pts2D[j], a, b, c) {
-                        contains = true
-                        break
-                    }
-                }
-                if contains { continue }
-                
-                let pa = points[indices[i0]]
-                let pb = points[indices[i1]]
-                let pc = points[indices[i2]]
-                tris.append((pa, pb, pc))
-                
-                pts2D.remove(at: i1)
-                indices.remove(at: i1)
-                earFound = true
-                break
-            }
-            if !earFound { break }
-        }
-        return tris
+        WoundGeometry.triangulatePolygon(points)
     }
     
     private func polygonNormal(_ points: [SIMD3<Float>]) -> SIMD3<Float> {
-        var n = SIMD3<Float>(0,0,0)
-        for i in 0..<points.count {
-            let p0 = points[i]
-            let p1 = points[(i + 1) % points.count]
-            n.x += (p0.y - p1.y) * (p0.z + p1.z)
-            n.y += (p0.z - p1.z) * (p0.x + p1.x)
-            n.z += (p0.x - p1.x) * (p0.y + p1.y)
-        }
-        let len = max(1e-6, simd_length(n))
-        return n / len
+        WoundGeometry.polygonNormal(points)
     }
     
     private func planeBasis(from normal: SIMD3<Float>) -> (SIMD3<Float>, SIMD3<Float>) {
-        let n = simd_normalize(normal)
-        let up = abs(n.y) < 0.9 ? SIMD3<Float>(0,1,0) : SIMD3<Float>(1,0,0)
-        let u = simd_normalize(simd_cross(up, n))
-        let v = simd_normalize(simd_cross(n, u))
-        return (u, v)
+        WoundGeometry.planeBasis(from: normal)
     }
 
     private func solveLinear3x3(
@@ -6223,22 +5947,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             : nil
     }
     
-    private func pointInTriangle(_ p: CGPoint, _ a: CGPoint, _ b: CGPoint, _ c: CGPoint) -> Bool {
-        let v0 = CGPoint(x: c.x - a.x, y: c.y - a.y)
-        let v1 = CGPoint(x: b.x - a.x, y: b.y - a.y)
-        let v2 = CGPoint(x: p.x - a.x, y: p.y - a.y)
-        
-        let dot00 = v0.x * v0.x + v0.y * v0.y
-        let dot01 = v0.x * v1.x + v0.y * v1.y
-        let dot02 = v0.x * v2.x + v0.y * v2.y
-        let dot11 = v1.x * v1.x + v1.y * v1.y
-        let dot12 = v1.x * v2.x + v1.y * v2.y
-        
-        let invDenom = 1.0 / (dot00 * dot11 - dot01 * dot01)
-        let u = (dot11 * dot02 - dot01 * dot12) * invDenom
-        let v = (dot00 * dot12 - dot01 * dot02) * invDenom
-        return u >= 0 && v >= 0 && (u + v) <= 1
-    }
+
     
     // MARK: - Depth Point Visualization
     
@@ -6563,7 +6272,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         info["incompleteOutline"] = flags.incompleteOutline
         info["bottomLargerThanTop"] = flags.bottomLargerThanTop
         info["calibrationUncertainty"] = flags.calibrationUncertainty
-        NotificationCenter.default.post(name: NSNotification.Name("RobustMetricsUpdated"), object: nil, userInfo: info)
+        NotificationCenter.default.post(name: NSNotification.Name("RobustMetricsUpdated"), object: notificationScope, userInfo: info)
     }
     
     // MARK: - Final Results HUD (cm² / cm³) with warnings
@@ -6774,36 +6483,10 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             
             // --- Area (cm^2) ---
             let topArea = self.computePlanarArea(densifiedTop)
-            let bottomArea = self.computePlanarArea(densifiedBottom)
-            let avgArea: Float? = {
-                switch (topArea, bottomArea) {
-                case let (a?, b?):
-                    return max(0, (a + b) / 2)
-                case let (a?, nil):
-                    return max(0, a)
-                case let (nil, b?):
-                    return max(0, b)
-                default:
-                    return nil
-                }
-            }()
-            
-            // --- Perimeter (cm) ---
-            let topPerim = self.computePerimeterCM(densifiedTop)
-            let bottomPerim = self.computePerimeterCM(densifiedBottom)
-            let avgPerim: Float? = {
-                switch (topPerim, bottomPerim) {
-                case let (p?, q?):
-                    return max(0, (p + q) / 2)
-                case let (p?, nil):
-                    return max(0, p)
-                case let (nil, q?):
-                    return max(0, q)
-                default:
-                    return nil
-                }
-            }()
-            
+            // The wound rim defines area and perimeter; the bottom affects volume only.
+            let avgArea = topArea
+            let avgPerim = self.computePerimeterCM(densifiedTop)
+
             // --- Volume (cm^3) ---
             var volumeCM3: Float? = nil
             var flags = VolumeQualityFlags()
@@ -7027,12 +6710,14 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         print("AR Session failed: \(error)")
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.didShutdown else { return }
+            let failedDuringStartup = self.isWaitingForFirstARFrame
             self.abortActiveScanForLifecycle()
             self.invalidateWorldAnchoredWoundState()
             self.sessionRunning = false
             self.shouldResetTrackingOnNextRun = true
             self.isWaitingForFirstARFrame = false
-            self.showHUDPrompt("LiDAR camera could not start. Go back, then try again.", duration: 5.0)
+            if failedDuringStartup, self.retryCameraStartupIfNeeded() { return }
+            self.showHUDPrompt("Camera unavailable. Use Camera options to restart.", duration: 5.0)
         }
     }
     
@@ -7059,10 +6744,19 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        // Do not retain the camera buffer while queued on the UI thread.
+        let timestamp = frame.timestamp
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.isWaitingForFirstARFrame else { return }
+            guard let self, self.isVisible, !self.didShutdown, self.sessionRunning,
+                  self.isWaitingForFirstARFrame, timestamp >= self.cameraRunStartedAt else { return }
             self.isWaitingForFirstARFrame = false
+            self.cameraStartupTimeout?.cancel()
+            self.cameraStartupTimeout = nil
             self.hideHUDPrompt()
+            self.startDisplayLinkIfNeeded()
+#if DEBUG
+            self.debugLog("Camera first frame in \(String(format: "%.2f", CACurrentMediaTime() - self.cameraRunStartedAt))s")
+#endif
         }
     }
     
@@ -7124,7 +6818,8 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         sessionRunning = false
         outlinePhase.wrappedValue = .top
         
-        sceneView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
+        cameraRunStartedAt = CACurrentMediaTime()
+        runCameraSession(config, options: [.resetTracking, .removeExistingAnchors])
         sessionRunning = true
         shouldResetTrackingOnNextRun = false
         isWaitingForFirstARFrame = true
@@ -7310,7 +7005,43 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     
     // MARK: - Edge Overlay Update
     
+    private func updateWoundHighlight() {
+        var boundary: [SIMD3<Float>] = []
+        var locked = false
+        if !isManualOutlineMode, let lock = autoWoundTrackingLock,
+           automaticScanStage != .mapping || CACurrentMediaTime() - lastAcceptedAutoWoundAt <= autoWoundAcquisitionMaxAge {
+            boundary = lock.displayWorldPolygon
+            locked = true
+        } else if !isManualOutlineMode, let pending = pendingAutoWoundObservations.last,
+                  WoundDetectionFrameGate.isFresh(capturedAt: pending.capturedAt,
+                      now: CACurrentMediaTime(), maximumAge: autoWoundAcquisitionMaxAge) {
+            boundary = pending.worldPolygon
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        guard let points = projectVisibleContourToScreen(boundary), points.count >= 3 else {
+            woundHighlight.isHidden = true
+            woundHighlightHalo.isHidden = true
+            return
+        }
+        let path = UIBezierPath()
+        path.move(to: points[0])
+        for point in points.dropFirst() { path.addLine(to: point) }
+        path.close()
+        let color: UIColor = locked ? .systemGreen : .systemYellow
+        woundHighlight.strokeColor = color.cgColor
+        woundHighlight.fillColor = color.withAlphaComponent(0.20).cgColor
+        woundHighlight.lineDashPattern = locked ? nil : [8, 5]
+        for layer in [woundHighlightHalo, woundHighlight] {
+            layer.frame = view.bounds
+            layer.path = path.cgPath
+            layer.isHidden = false
+        }
+    }
+
     @objc private func updateEdgeOverlay() {
+        updateWoundHighlight()
         guard let frame = sceneView.session.currentFrame else { return }
         guard edgeOverlayView.window != nil else { return }
         
@@ -7388,43 +7119,14 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
     
     // MARK: - Vision Segmentation Pipeline
     
-    private func setupSegmentationPipeline() {
-        guard
-            let modelURL = Bundle.main.url(forResource: "WoundSegmentation", withExtension: "mlmodelc"),
-            let compiledModel = try? MLModel(contentsOf: modelURL),
-            let vnModel = try? VNCoreMLModel(for: compiledModel)
-        else {
-            segmentationRequest = nil
-#if DEBUG
-            print("Segmentation model not found/loaded; running without it.")
-#endif
-            return
-        }
-        let request = VNCoreMLRequest(model: vnModel) { [weak self] request, _ in
-            guard let self = self else { return }
-            if let result = request.results?.first as? VNPixelBufferObservation {
-                // Heavy work stays off-main; processSegmentationMask() will hop to main only for UI updates.
-                guard let frame = self.activeSegmentationFrame else {
-                    DispatchQueue.main.async { self.isRunningSegmentation = false }
-                    return
-                }
-                self.processSegmentationMask(
-                    result.pixelBuffer,
-                    generation: self.activeSegmentationGeneration,
-                    frame: frame,
-                    orientation: self.activeSegmentationOrientation
-                )
-            } else {
-                DispatchQueue.main.async { self.isRunningSegmentation = false }
-            }
-        }
-        request.imageCropAndScaleOption = .scaleFill
-        segmentationRequest = request
-    }
-    
     private func runSegmentation(on frame: ARFrame) {
-        guard isAutoSegmentationEnabled else { return }
+        guard isAutoSegmentationEnabled, isVisible, !didShutdown else { return }
         if isRunningSegmentation { return }
+        guard case .normal = frame.camera.trackingState else { return }
+        let capturedAt = frame.timestamp
+        guard detectionFrameGate.submit(
+            capturedAt: capturedAt, now: CACurrentMediaTime(), maximumAge: autoWoundAcquisitionMaxAge
+        ) else { return }
         isRunningSegmentation = true
         let generation = segmentationGeneration
         activeSegmentationGeneration = generation
@@ -7478,7 +7180,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
                         result,
                         generation: generation,
                         attemptSequence: attemptSequence,
-                        capturedAt: CACurrentMediaTime()
+                        capturedAt: capturedAt
                     )
                 }
                 return
@@ -7518,6 +7220,13 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         defer { finishSegmentationRunIfOwned(generation) }
         guard generation == segmentationGeneration else { return }
         guard !isScanLocked else { return }
+        guard WoundDetectionFrameGate.isFresh(
+            capturedAt: capturedAt, now: CACurrentMediaTime(), maximumAge: autoWoundAcquisitionMaxAge
+        ), let currentFrame = sceneView.session.currentFrame,
+           case .normal = currentFrame.camera.trackingState else {
+            noteRejectedAutoWoundObservation()
+            return
+        }
 
         let screenPolygon = result.geometry.boundaryScreenPoints
         let worldPolygon = result.geometry.boundaryWorldPoints
@@ -7579,23 +7288,24 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
             return CGPoint(x: sx / count, y: sy / count)
         }()
 
-        if let last = lastSegmentationCentroid {
+        // Compare both boundaries in the CURRENT camera view so ordinary
+        // phone motion does not masquerade as a changing wound edge.
+        if let previous = projectVisibleContourToScreen(latestWoundSegmentationWorldPolygon),
+           previous.count >= 3 {
+            let last = CGPoint(x: previous.map(\.x).reduce(0, +) / CGFloat(previous.count),
+                               y: previous.map(\.y).reduce(0, +) / CGFloat(previous.count))
             let distance = hypot(centroid2D.x - last.x, centroid2D.y - last.y)
-            let threshold: CGFloat = isRefiningWound ? 11.0 : 16.0
+            let threshold: CGFloat = isRefiningWound ? 11.0 : 20.0
             let currentArea = screenPolygonAreaRatio(trackedScreenPolygon)
-            let previousArea = screenPolygonAreaRatio(lastSegmentationScreenSample)
+            let previousArea = screenPolygonAreaRatio(previous)
             let relativeAreaChange = abs(currentArea - previousArea) / max(previousArea, 0.000_001)
-            let overlap = boundingRectIoU(trackedScreenPolygon, lastSegmentationScreenSample)
-            if distance < threshold,
-               relativeAreaChange <= 0.22,
-               overlap >= 0.58 {
+            let overlap = boundingRectIoU(trackedScreenPolygon, previous)
+            if distance < threshold, relativeAreaChange <= 0.28, overlap >= 0.55 {
                 stablePolygonCount += 1
             } else {
                 stablePolygonCount = 0
             }
         } else {
-            // Show the first mask immediately, but do not treat a single transient
-            // frame as stable evidence for the saved measurement.
             stablePolygonCount = 0
         }
         lastSegmentationCentroid = centroid2D
@@ -7683,7 +7393,7 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         postVolumetricScanStatus(
             progress: progress,
             isScanning: isVolumetricLiDARScanning,
-            message: "Mapping the wound edge — keep the camera steady.",
+            message: "Keep the highlighted wound in view. Green means the edge is locking.",
             quality: confidence == .high ? "high" : confidence == .medium ? "medium" : "low",
             segmentationApplied: true,
             volumeSource: sourceText,
@@ -7710,249 +7420,6 @@ final class ARViewController: UIViewController, ARSCNViewDelegate, ARSessionDele
         }
         return .low
     }
-    
-    private func processSegmentationMask(
-        _ mask: CVPixelBuffer,
-        generation: Int,
-        frame: ARFrame,
-        orientation: UIInterfaceOrientation
-    ) {
-        // Always clear the running flag when we're done, no matter what path we take.
-        defer {
-            activeSegmentationFrame = nil
-            DispatchQueue.main.async { self.isRunningSegmentation = false }
-        }
-        guard generation == segmentationGeneration else { return }
-        
-        // Convert mask -> CGImage (with light preprocessing to reduce speckle)
-        var ci = CIImage(cvPixelBuffer: mask)
-        
-        // Increase contrast and binarize-ish (works for both 0/1 masks and soft logits)
-        ci = ci
-            .applyingFilter("CIColorControls", parameters: [
-                kCIInputContrastKey: 2.0,
-                kCIInputSaturationKey: 0.0
-            ])
-            .applyingFilter("CIColorClamp", parameters: [
-                "inputMinComponents": CIVector(x: 0, y: 0, z: 0, w: 0),
-                "inputMaxComponents": CIVector(x: 1, y: 1, z: 1, w: 1)
-            ])
-        
-        // Small morphology close to connect edges (safe even if mask is already binary)
-        ci = ci
-            .applyingFilter("CIMorphologyMaximum", parameters: ["inputRadius": 1.0])
-            .applyingFilter("CIMorphologyMinimum", parameters: ["inputRadius": 1.0])
-        
-        guard let cgMask = ciContext.createCGImage(ci, from: ci.extent) else {
-            return
-        }
-        
-        // Try both polarities in case the mask is inverted (white-on-black vs black-on-white).
-        func detectContours(detectsDarkOnLight: Bool) -> VNContoursObservation? {
-            let req = VNDetectContoursRequest()
-            req.contrastAdjustment = 1.0
-            req.detectsDarkOnLight = detectsDarkOnLight
-            req.maximumImageDimension = 512
-            let handler = VNImageRequestHandler(cgImage: cgMask, options: [:])
-            do {
-                try handler.perform([req])
-                return req.results?.first as? VNContoursObservation
-            } catch {
-                return nil
-            }
-        }
-        
-        let observations = [
-            detectContours(detectsDarkOnLight: false),
-            detectContours(detectsDarkOnLight: true)
-        ].compactMap { $0 }
-        guard !observations.isEmpty else {
-            return
-        }
-        
-        // Score contours by area, while penalizing "frame border" contours.
-        func scoreContour(_ pts: [vector_float2]) -> CGFloat {
-            guard pts.count >= 3 else { return -.greatestFiniteMagnitude }
-            var minX: Float = 1, minY: Float = 1, maxX: Float = 0, maxY: Float = 0
-            var area: Float = 0
-            var cx: Float = 0
-            var cy: Float = 0
-            for i in 0..<pts.count {
-                let a = pts[i]
-                let b = pts[(i + 1) % pts.count]
-                minX = min(minX, a.x); minY = min(minY, a.y)
-                maxX = max(maxX, a.x); maxY = max(maxY, a.y)
-                area += (a.x * b.y - b.x * a.y)
-                cx += a.x
-                cy += a.y
-            }
-            area = abs(area) * 0.5
-            cx /= Float(pts.count)
-            cy /= Float(pts.count)
-            let bboxW = maxX - minX
-            let bboxH = maxY - minY
-            let bboxArea = bboxW * bboxH
-            guard area >= 0.00025, area <= 0.42 else { return -.greatestFiniteMagnitude }
-            guard bboxArea >= 0.0005, bboxArea <= 0.62 else { return -.greatestFiniteMagnitude }
-            let fillRatio = area / max(0.0001, bboxArea)
-            guard fillRatio >= 0.04 else { return -.greatestFiniteMagnitude }
-            
-            // Penalize contours that hug the image border (common false positive).
-            var penalty: Float = 0
-            if minX < 0.015 || minY < 0.015 || maxX > 0.985 || maxY > 0.985 { penalty += 0.35 }
-            if bboxArea > 0.40 { penalty += 0.20 }
-            let centerDistance = hypot(cx - 0.5, cy - 0.5)
-            penalty += min(0.18, centerDistance * 0.12)
-            
-            return CGFloat((area * 3.0) + (fillRatio * 0.08) - penalty)
-        }
-        
-        
-var bestContour: VNContour?
-var bestScore: CGFloat = -.greatestFiniteMagnitude
-
-func flatten(_ contour: VNContour) -> [VNContour] {
-    var out = [contour]
-    for child in contour.childContours {
-        out.append(contentsOf: flatten(child))
-    }
-    return out
-}
-
-let candidates: [VNContour] = observations.flatMap { observation in
-    observation.topLevelContours.flatMap { flatten($0) }
-}
-for c in candidates {
-    let pts = c.normalizedPoints
-    let s = scoreContour(pts)
-    if s > bestScore {
-        bestScore = s
-        bestContour = c
-    }
-}
-
-guard let contour = bestContour else { return }
-        
-        // Map the oriented Vision output back into raw camera coordinates, then use
-        // ARKit's display transform so crop/orientation exactly matches the preview.
-        let viewSize = sceneView.bounds.size
-        let cameraToView = frame.displayTransform(for: orientation, viewportSize: viewSize)
-
-        func rawCameraPoint(fromOrientedTopLeft point: CGPoint) -> CGPoint {
-            switch orientation {
-            case .portrait:
-                return CGPoint(x: point.y, y: 1 - point.x)
-            case .portraitUpsideDown:
-                return CGPoint(x: 1 - point.y, y: point.x)
-            case .landscapeRight:
-                return CGPoint(x: 1 - point.x, y: 1 - point.y)
-            case .landscapeLeft:
-                return point
-            default:
-                return CGPoint(x: point.y, y: 1 - point.x)
-            }
-        }
-        
-        var screenPts: [CGPoint] = []
-        screenPts.reserveCapacity(contour.pointCount)
-        
-        for p in contour.normalizedPoints {
-            let orientedPoint = CGPoint(x: CGFloat(p.x), y: 1 - CGFloat(p.y))
-            let cameraPoint = rawCameraPoint(fromOrientedTopLeft: orientedPoint)
-            let viewPoint = cameraPoint.applying(cameraToView)
-            screenPts.append(CGPoint(x: viewPoint.x * viewSize.width, y: viewPoint.y * viewSize.height))
-        }
-        
-        
-// Downsample + smooth for stability (less aggressive while refining)
-let step = isRefiningWound ? 3 : contourDownsampleStep
-let eps: CGFloat = isRefiningWound ? 1.5 : rdpEpsilon
-let ds = downsample(points: screenPts, step: step)
-let smooth = rdp(ds, epsilon: eps)
-let capped = Array(smooth.prefix(160))
-        
-        guard capped.count >= 3 else { return }
-        
-        // Stability check based on centroid drift (robust to point re-sampling)
-        let centroid2D: CGPoint = {
-            var sx: CGFloat = 0, sy: CGFloat = 0
-            for p in capped { sx += p.x; sy += p.y }
-            let n = CGFloat(capped.count)
-            return CGPoint(x: sx / n, y: sy / n)
-        }()
-        
-        if let last = lastSegmentationCentroid {
-            let d = hypot(centroid2D.x - last.x, centroid2D.y - last.y)
-            let thr: CGFloat = isRefiningWound ? 10.0 : 14.0
-            let currentArea = screenPolygonAreaRatio(capped)
-            let previousArea = screenPolygonAreaRatio(lastSegmentationScreenSample)
-            let relativeAreaChange = abs(currentArea - previousArea) / max(previousArea, 0.000_001)
-            let overlap = boundingRectIoU(capped, lastSegmentationScreenSample)
-            if d < thr, relativeAreaChange <= 0.22, overlap >= 0.58 {
-                stablePolygonCount += 1
-            } else {
-                stablePolygonCount = 0
-            }
-        } else {
-            stablePolygonCount = 0
-        }
-        lastSegmentationCentroid = centroid2D
-        lastSegmentationScreenSample = capped
-        
-        let isStableEnough = stablePolygonCount >= requiredStableChecks
-        let isFirstOutline = currentUserPoints().count < 3
-        let shouldApply = isFirstOutline || isStableEnough || !isRefiningWound
-        if !shouldApply { return }
-        
-        // Convert to world points (using mesh when available, else scene depth fallback).
-        var new3DPoints: [SIMD3<Float>] = []
-        new3DPoints.reserveCapacity(capped.count)
-        for sp in capped {
-            if let wp = worldPointFromScreen(sp, requireMeshHit: false) {
-                new3DPoints.append(wp)
-            }
-        }
-        
-        
-guard new3DPoints.count >= 3 else {
-    DispatchQueue.main.async {
-        self.showHUDPrompt("Move closer and scan around the wound for better depth.")
-    }
-    return
-}
-
-// Reject degenerate/collinear results early so we don't end up with NaNs later.
-guard validateContourForVolume(new3DPoints) else {
-    return
-}
-        
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            guard self.segmentationGeneration == generation else { return }
-            guard !self.isScanLocked, !self.didFinalizeVolumetricMeasurement else { return }
-            if self.isApplyingSegmentationResult { return }
-            self.isApplyingSegmentationResult = true
-            defer { self.isApplyingSegmentationResult = false }
-            self.replaceAutoSegmentation(screenPolygon: capped, worldPolygon: new3DPoints)
-            
-            let currentPoints = self.currentUserPoints()
-            if let deep = self.deepestPointInROI(boundary: currentPoints) {
-                self.selectedDepthPoint = deep
-            } else {
-                self.selectedDepthPoint = self.centroid(of: currentPoints)
-            }
-            
-            self.updateDepthPointNode()
-            self.updateDepthIndicatorLine()
-            self.updateFilledPolygon(force: true)
-            self.updateMetrics()
-            
-            self.showHUDPrompt(self.hudMessageMeasurementsReady, duration: 1.0)
-        }
-    }
-    
-    
-    // MARK: - Toggle Wireframe and Classification Colors
     
     @objc private func toggleWireframe() {
         meshViewerMode = false
@@ -8098,34 +7565,11 @@ guard validateContourForVolume(new3DPoints) else {
     }
     
     private func computePlanarArea(_ points: [SIMD3<Float>]) -> Float? {
-        guard points.count >= 3 else { return nil }
-        let normal = polygonNormal(points)
-        let (u, v) = planeBasis(from: normal)
-        let origin = points[0]
-        let pts2D: [CGPoint] = points.map { p in
-            let d = p - origin
-            let x = CGFloat(simd_dot(d, u))
-            let y = CGFloat(simd_dot(d, v))
-            return CGPoint(x: x, y: y)
-        }
-        var area: CGFloat = 0
-        for i in 0..<pts2D.count {
-            let j = (i + 1) % pts2D.count
-            area += pts2D[i].x * pts2D[j].y - pts2D[j].x * pts2D[i].y
-        }
-        return Float(abs(area) * 0.5) * 10000.0
+        WoundGeometry.computePlanarArea(points)
     }
     
     private func computePerimeterCM(_ points: [SIMD3<Float>]) -> Float? {
-        guard points.count >= 2 else { return nil }
-        var sumM: Float = 0
-        for i in 0..<points.count {
-            let a = points[i]
-            let b = points[(i + 1) % points.count]
-            sumM += simd_length(b - a)
-        }
-        let cm = sumM * 100.0
-        return cm.isFinite ? max(0, cm) : nil
+        WoundGeometry.computePerimeterCM(points)
     }
     
     
@@ -8479,7 +7923,7 @@ guard validateContourForVolume(new3DPoints) else {
         let validation = manualContourValidation(points)
         NotificationCenter.default.post(
             name: NSNotification.Name("ManualOutlineStateDidUpdate"),
-            object: nil,
+            object: notificationScope,
             userInfo: [
                 "phase": phase,
                 "pointCount": points.count,

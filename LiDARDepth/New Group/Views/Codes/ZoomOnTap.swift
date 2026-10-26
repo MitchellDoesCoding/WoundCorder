@@ -2,6 +2,7 @@
 import SwiftUI
 
 struct ZoomOnTap<T: View>: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     let content: T
     @State private var isPresented = false
 

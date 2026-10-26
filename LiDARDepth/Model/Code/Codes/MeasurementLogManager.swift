@@ -3,56 +3,74 @@ import SwiftUI
 
 @MainActor
 final class MeasurementLogManager: ObservableObject {
-    @AppStorage("savedMeasurements") private var storedJSON: String = ""
+    @Published private(set) var items: [SavedMeasurement] = []
+    @Published private(set) var storageError: String?
+    private let records: WoundRecordFile<SavedMeasurement>
+    var canRestorePrevious: Bool { records.hasBackup }
 
-    @Published private(set) var items: [SavedMeasurement] = [] {
-        didSet { persist() }
+    init(defaults: UserDefaults = .standard, directory: URL? = nil) {
+        records = WoundRecordFile(name: "measurements", legacyKey: "savedMeasurements", defaults: defaults, directory: directory)
+        reload()
+    }
+    func reload() {
+        do { items = try records.load(); storageError = nil }
+        catch { storageError = error.localizedDescription }
+    }
+    func restorePrevious() {
+        do { items = try records.restorePrevious(); storageError = nil }
+        catch { storageError = error.localizedDescription }
+    }
+    @discardableResult private func commit(_ updated: [SavedMeasurement]) -> Bool {
+        do { try records.commit(updated); items = updated; storageError = nil; return true }
+        catch { storageError = error.localizedDescription; return false }
     }
 
-    init() {
-        load()
-    }
-
+    @discardableResult
     func add(
         title: String,
         perimeter: Float,
         area: Float,
         volume: Float,
-        severity: Int? = nil,
         patientID: UUID? = nil,
         patientName: String? = nil,
         bodyArea: String? = nil,
-        laterality: String? = nil
-    ) {
+        laterality: String? = nil,
+        context: WoundAnalysisContext? = nil
+    ) -> Bool {
+        guard perimeter.isFinite, perimeter > 0, area.isFinite, area > 0, volume.isFinite, volume >= 0 else {
+            storageError = "Only a valid, completed measurement can be saved."
+            return false
+        }
         let newItem = SavedMeasurement(
             title: title,
             perimeter: perimeter,
             area: area,
             volume: volume,
-            severity: severity,
             patientID: patientID,
             patientName: patientName,
             bodyArea: bodyArea,
-            laterality: laterality
+            laterality: laterality,
+            context: context
         )
-        items.insert(newItem, at: 0)
+        return commit([newItem] + items)
     }
 
     func delete(_ indexSet: IndexSet) {
-        items.remove(atOffsets: indexSet)
+        var updated = items; updated.remove(atOffsets: indexSet); commit(updated)
     }
 
     func delete(item: SavedMeasurement) {
-        if let idx = items.firstIndex(of: item) { items.remove(at: idx) }
+        commit(items.filter { $0.id != item.id })
     }
 
     func rename(item: SavedMeasurement, to newTitle: String) {
         guard let idx = items.firstIndex(of: item) else { return }
-        items[idx].title = newTitle
+        var updated = items; updated[idx].title = newTitle; commit(updated)
     }
 
     func shareText(for item: SavedMeasurement) -> String {
         let dateFormatter = DateFormatter()
+        dateFormatter.locale = WoundLanguage.current.locale
         dateFormatter.dateStyle = .medium
         dateFormatter.timeStyle = .short
         let dateString = dateFormatter.string(from: item.date)
@@ -62,9 +80,7 @@ final class MeasurementLogManager: ObservableObject {
             "Area: \(String(format: "%.2f", item.area)) cm²",
             "Volume: \(String(format: "%.2f", item.volume)) cm³"
         ]
-        if let severity = item.severity {
-            lines.append("Severity: \(severity)/20")
-        }
+
         if let patientName = item.patientName, !patientName.isEmpty {
             lines.append("Patient: \(patientName)")
         }
@@ -72,12 +88,16 @@ final class MeasurementLogManager: ObservableObject {
             let side = item.laterality.map { "\($0) " } ?? ""
             lines.append("Body area: \(side)\(bodyArea)")
         }
-        return lines.joined(separator: "\n")
+        if let context = item.context {
+            lines.append("Source: \(context.volumeSource)")
+            lines.append("Quality: \(context.quality) • Preliminary: \(context.isPreliminary ? "Yes" : "No")")
+        } else { lines.append("Legacy measurement: quality and source were not recorded.") }
+        return lines.map { WoundL10n.text($0) }.joined(separator: "\n")
     }
 
     func shareCSV(for item: SavedMeasurement) -> String {
         // CSV header + single row for this item
-        let header = "id,title,date,perimeter_cm,area_cm2,volume_cm3,severity,patient_name,body_area,laterality\n"
+        let header = "id,title,date,perimeter_cm,area_cm2,volume_cm3,patient_name,body_area,laterality\n"
         let iso = ISO8601DateFormatter().string(from: item.date)
         let row = [
             item.id.uuidString,
@@ -86,7 +106,6 @@ final class MeasurementLogManager: ObservableObject {
             String(format: "%.2f", item.perimeter),
             String(format: "%.2f", item.area),
             String(format: "%.2f", item.volume),
-            item.severity.map(String.init) ?? "",
             "\"\((item.patientName ?? "").replacingOccurrences(of: "\"", with: "\"\""))\"",
             "\"\((item.bodyArea ?? "").replacingOccurrences(of: "\"", with: "\"\""))\"",
             item.laterality ?? ""
@@ -94,26 +113,4 @@ final class MeasurementLogManager: ObservableObject {
         return header + row
     }
 
-    // MARK: - Persistence
-
-    private func load() {
-        guard !storedJSON.isEmpty, let data = storedJSON.data(using: .utf8) else {
-            items = []
-            return
-        }
-        do {
-            items = try JSONDecoder().decode([SavedMeasurement].self, from: data)
-        } catch {
-            items = []
-        }
-    }
-
-    private func persist() {
-        do {
-            let data = try JSONEncoder().encode(items)
-            storedJSON = String(data: data, encoding: .utf8) ?? ""
-        } catch {
-            // If encoding fails, keep previous storage
-        }
-    }
 }

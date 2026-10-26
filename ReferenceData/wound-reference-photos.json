@@ -1,0 +1,182 @@
+[
+  {
+    "id": "MT_005032",
+    "woundType": "abrasion",
+    "assetName": "reference-MT_005032",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_005032",
+    "sourceDataset": "local_wound_dataset_abrasions",
+    "labelStatus": "expert_curated",
+    "sha256": "d470ec08da3ff5022412e5046494f2eee268aea4a3562b3c8a79f77e3bc5d097"
+  },
+  {
+    "id": "MT_005037",
+    "woundType": "abrasion",
+    "assetName": "reference-MT_005037",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_005037",
+    "sourceDataset": "local_wound_dataset_abrasions",
+    "labelStatus": "expert_curated",
+    "sha256": "bff4f6ef87aa809930d9f5928ff50dd2d97d270c9bb99cceba5355afe5f811db"
+  },
+  {
+    "id": "MT_006477",
+    "woundType": "bruise",
+    "assetName": "reference-MT_006477",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_006477",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "c494786e2e07fa143975fbc70f06a88d1bc0bcfc93cc533df0fcbb61ecd4f047"
+  },
+  {
+    "id": "MT_006484",
+    "woundType": "bruise",
+    "assetName": "reference-MT_006484",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_006484",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "2c8c2b1de0e413b0ed9d3ac784d4bd512de46a35d5ffb045d8952b4723b768cd"
+  },
+  {
+    "id": "MT_006585",
+    "woundType": "burn",
+    "assetName": "reference-MT_006585",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_006585",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "7fb6060edf5707613abb9fc679fe4cdf601f6e28bfaf5e6ac977ce83f5a3b801"
+  },
+  {
+    "id": "MT_006586",
+    "woundType": "burn",
+    "assetName": "reference-MT_006586",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_006586",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "2003870a421bca3f4c8725cef1e1541cf45a85e803b55e89531956482434b3b9"
+  },
+  {
+    "id": "MT_006646",
+    "woundType": "diabetic_foot_ulcer",
+    "assetName": "reference-MT_006646",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_006646",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "727cd219736e97f32dfee5fb3cf9923c58f7a886648135d0418261042e45c10b"
+  },
+  {
+    "id": "MT_006648",
+    "woundType": "diabetic_foot_ulcer",
+    "assetName": "reference-MT_006648",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_006648",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "62d26275be01839bd9efa7942c878d46f4091ce5e24e456286a046759c098e71"
+  },
+  {
+    "id": "MT_006874",
+    "woundType": "laceration_or_cut",
+    "assetName": "reference-MT_006874",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_006874",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "88f0314ac65d6688a3d56c52aae3720ecaab308bde4fbd153b5f4f2d64b96287"
+  },
+  {
+    "id": "MT_006877",
+    "woundType": "laceration_or_cut",
+    "assetName": "reference-MT_006877",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_006877",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "b93fce961f773a60b5273b58e9534d6f308b0debf9739f42b399ac1f226ba880"
+  },
+  {
+    "id": "MT_000003",
+    "woundType": "normal_control",
+    "assetName": "reference-MT_000003",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_000003",
+    "sourceDataset": "local_N",
+    "labelStatus": "expert_curated",
+    "sha256": "9f591cdc5c8805e72a331572b7f426a5f6fc06dc098bd43cf5240de5f9c04a7c"
+  },
+  {
+    "id": "MT_000004",
+    "woundType": "normal_control",
+    "assetName": "reference-MT_000004",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_000004",
+    "sourceDataset": "local_N",
+    "labelStatus": "expert_curated",
+    "sha256": "4b093e50f1cf59cbdcc7bc359b2179466c12a83a6370efb9fb4e8c0c8bcde753"
+  },
+  {
+    "id": "MT_006995",
+    "woundType": "pressure_injury",
+    "assetName": "reference-MT_006995",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_006995",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "177bd8a8da6173478b2ce12b96efce0e12a413dff0629162a676724dad36d8be"
+  },
+  {
+    "id": "MT_007002",
+    "woundType": "pressure_injury",
+    "assetName": "reference-MT_007002",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_007002",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "5e0859115ea2a9ef35ea5e7aa306ae0d93dbbeb69d689559c12a59dd44908cac"
+  },
+  {
+    "id": "MT_007296",
+    "woundType": "surgical_wound",
+    "assetName": "reference-MT_007296",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_007296",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "8437709d0c49bf1181414d46ce0545843f92b8bd588494021989d55d40cd7634"
+  },
+  {
+    "id": "MT_007298",
+    "woundType": "surgical_wound",
+    "assetName": "reference-MT_007298",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_007298",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "c035800908857899d5e3025c90a95f02877e13f307795930db5eaa6492f34887"
+  },
+  {
+    "id": "MT_007503",
+    "woundType": "venous_leg_ulcer",
+    "assetName": "reference-MT_007503",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_007503",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "54d341e4a31de8b391657c620545086c0bc2392ca3dde4ccfbd2c42c1ab92934"
+  },
+  {
+    "id": "MT_007522",
+    "woundType": "venous_leg_ulcer",
+    "assetName": "reference-MT_007522",
+    "caption": "Source-labeled example. Wounds can look different.",
+    "attribution": "Training Wound Dataset \u2022 MT_007522",
+    "sourceDataset": "training_wound_dataset_reference",
+    "labelStatus": "expert_curated",
+    "sha256": "3505731e3f086726e58aac8654c73f759c81c4f5f57394b166ade1e5f2129c61"
+  }
+]

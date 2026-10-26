@@ -1,0 +1,45 @@
+This guide explains the kinds of wounds and the kinds of tissue the WoundCorder app can see in a photo. It is for learning only. It does not replace your doctor or nurse. Call your care team if a wound looks worse, smells bad, or is more red, swollen, warm, or painful.
+
+
+
+Ending:
+
+When to Get Help
+Call your doctor or nurse if you notice:
+
+More redness, swelling, warmth, or pain
+Pus or a bad smell
+Fever or feeling unwell
+Bleeding that will not stop
+A wound that is not healing or is getting bigger
+For more trusted wound and injury information, visit MedlinePlus: https://medlineplus.gov/woundsandinjuries.html
+
+
+
+Wound Types
+Diabetic foot wound (diabetic foot ulcer) This is an open sore on the foot. It happens in people with diabetes. High blood sugar can harm the nerves and blood flow in the feet. You may not feel a small cut or blister, so it can grow into a sore. These sores are often on the toes or the bottom of the foot. Keeping weight off the foot and caring for the wound help it heal. Learn more: https://medlineplus.gov/diabeticfoot.html
+
+Venous leg wound (venous leg ulcer) This is a sore on the lower leg, often near the ankle. It forms when leg veins do not push blood back up to the heart well. Blood pools in the leg, and the skin breaks down. The leg may swell and the skin may turn dark. Wearing compression wraps or stockings and raising the leg help it heal. Learn more: https://medlineplus.gov/ency/article/000834.htm
+
+Pressure injury (bed sore) This is skin and tissue damage from staying in one spot too long. The weight of the body presses on the skin over a bone, like the hips, back, or heels. The pressure cuts off blood flow and the skin breaks down. Moving often, changing position, and using soft cushions help prevent it. Learn more: https://medlineplus.gov/pressuresores.html
+
+Abrasion (scrape) This is a shallow wound where the top layer of skin is rubbed or scraped off. It often happens from a fall or sliding on a rough surface. It may sting, be red, and ooze a little. Most scrapes heal on their own with gentle cleaning and a clean cover. Learn more: https://medlineplus.gov/woundsandinjuries.html
+
+Laceration or cut This is a tear or slice in the skin. It can be made by a sharp object like a knife or glass. A deep cut may need stitches to close and may bleed a lot. Clean, cover, and press on it to stop bleeding. Get help for deep cuts, cuts that gape open, or cuts that keep bleeding. Learn more: https://medlineplus.gov/ency/article/000043.htm
+
+Burn This is skin damage from heat, fire, hot liquids, chemicals, electricity, or the sun. A mild burn is red and sore. A worse burn can blister or look white, brown, or black. Cool a small burn with cool (not ice-cold) water. Get help right away for large, deep, or very painful burns. Learn more: https://medlineplus.gov/burns.html
+
+Bruise This is bleeding under the skin from a bump or hit. The skin is not broken. It looks black, blue, purple, or yellow as it heals. It may be sore and swollen. A cold pack in the first day can help. Most bruises fade in 1 to 2 weeks. Learn more: https://medlineplus.gov/ency/article/007213.htm
+
+Tissue Types in a Wound
+The app can also spot the kinds of tissue inside a wound. The color of the tissue gives clues about how the wound is doing.
+
+Inflammation This is the body's early repair stage. The area may look red, feel warm, swell, and hurt. Some of this is normal and helps clean the wound. But too much, or red that keeps spreading, can be a sign of infection. Tell your care team if redness grows or the wound gets more painful.
+
+Necrosis / eschar (dead tissue) This is dead tissue in the wound. It has lost its blood supply. Dry, hard, black dead tissue is called eschar. Wet dead tissue can look dark yellow or brown. Dead tissue slows healing and often needs to be removed by a care team.
+
+Slough This is soft, wet, dead material in the wound. It can be yellow, tan, green, or brown and may look stringy or mushy. It can slow healing and may need to be cleaned away so new tissue can grow.
+
+Granulation This is healthy new tissue that fills in the wound. It is red or pink and looks bumpy and moist. It has tiny new blood vessels that bring oxygen. Granulation is a good sign that the wound is healing.
+
+Epithelium (new skin) This is the new skin that grows over the wound to close it. It starts at the edges and moves toward the center. It often looks light pink and gets paler as it turns into normal skin. This is the final sign of healing.

@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     @Environment(\.dismiss) private var dismiss
 
-    @AppStorage("woundServerBaseURL") private var baseURL: String = ""
     @AppStorage("offlineFriendlyMode") private var offlineFriendlyMode: Bool = true
     @AppStorage("researchUsageConsent") private var researchUsageConsent: Bool = false
     @AppStorage("woundAppMode") private var modeRaw: String = WoundAppMode.publicPatient.rawValue
@@ -18,12 +18,12 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section(
-                    header: Text("Care Mode"),
-                    footer: Text("This changes the home workspace and the tone/detail level used by Wound AI.")
+                    header: Text(WoundL10n.text("Care Mode")),
+                    footer: Text(WoundL10n.text("This changes the home workspace and the tone/detail level used by Wound AI."))
                 ) {
-                    Picker("Care Mode", selection: $modeRaw) {
+                    Picker(WoundL10n.text("Care Mode"), selection: $modeRaw) {
                         ForEach(WoundAppMode.allCases) { mode in
-                            Label(mode.displayName, systemImage: mode.systemImage)
+                            Label(WoundL10n.text(mode.displayName), systemImage: mode.systemImage)
                                 .tag(mode.rawValue)
                         }
                     }
@@ -32,10 +32,10 @@ struct SettingsView: View {
                     ModeSettingsSummary(mode: selectedMode)
                 }
 
-                Section(header: Text("Appearance")) {
-                    Picker("Home Appearance", selection: $appearanceRaw) {
+                Section(header: Text(WoundL10n.text("Appearance"))) {
+                    Picker(WoundL10n.text("Home Appearance"), selection: $appearanceRaw) {
                         ForEach(HomeAppearanceMode.allCases) { option in
-                            Label(option.rawValue, systemImage: option.systemImage)
+                            Label(WoundL10n.text(option.rawValue), systemImage: option.systemImage)
                                 .tag(option.rawValue)
                         }
                     }
@@ -43,51 +43,30 @@ struct SettingsView: View {
                 }
 
                 Section(
-                    header: Text("Measurement"),
-                    footer: Text("Area, depth, volume, mesh export, and severity scoring are available without a network request when device depth data is available.")
+                    header: Text(WoundL10n.text("Measurement")),
+                    footer: Text(WoundL10n.text("Area, depth, volume, and mesh export are available without a network request when device depth data is available."))
                 ) {
-                    Toggle("Offline-friendly LiDAR measurement", isOn: $offlineFriendlyMode)
-                    LabeledContent("Method", value: "ARKit LiDAR mesh + scene depth")
-                    LabeledContent("Wound edge", value: "On-device segmentation with guided refine")
-                    LabeledContent("Calibration", value: "No card required")
+                    Toggle(WoundL10n.text("Offline-friendly LiDAR measurement"), isOn: $offlineFriendlyMode)
+                    LabeledContent(WoundL10n.text("Method"), value: "ARKit LiDAR mesh + scene depth")
+                    LabeledContent(WoundL10n.text("Wound edge"), value: "On-device segmentation with guided refine")
+                    LabeledContent(WoundL10n.text("Calibration"), value: "No card required")
+                }
+
+                Section(WoundL10n.text("Photo checks")) {
+                    NavigationLink(WoundL10n.text("Models, modes & privacy")) { WoundAIModelView() }
                 }
 
                 Section(
-                    header: Text("Wound AI"),
-                    footer: Text("On-device keeps wound images local when the model is installed. Legacy Server sends images to the configured endpoint.")
+                    header: Text(WoundL10n.text("Consent")),
+                    footer: Text(WoundL10n.text("Research consent is optional and can be changed here at any time."))
                 ) {
-                    Picker("Processing", selection: $analysisProviderRaw) {
-                        ForEach(WoundAnalysisProvider.allCases) { provider in
-                            Text(provider.title).tag(provider.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    NavigationLink {
-                        WoundAIModelView()
-                    } label: {
-                        Label("Models & Privacy", systemImage: "brain.head.profile")
-                    }
-
-                    if analysisProviderRaw == WoundAnalysisProvider.legacyRemote.rawValue {
-                        TextField("Legacy Server URL", text: $baseURL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled(true)
-                            .keyboardType(.URL)
-                    }
-                }
-
-                Section(
-                    header: Text("Consent"),
-                    footer: Text("Research consent is optional and can be changed here at any time.")
-                ) {
-                    Toggle("Allow de-identified usage data for research", isOn: $researchUsageConsent)
+                    Toggle(WoundL10n.text("Allow de-identified usage data for research"), isOn: $researchUsageConsent)
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle(WoundL10n.text("Settings"))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
+                    Button(WoundL10n.text("Done")) {
                         dismiss()
                     }
                 }
@@ -97,6 +76,7 @@ struct SettingsView: View {
 }
 
 private struct ModeSettingsSummary: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     let mode: WoundAppMode
 
     var body: some View {
@@ -107,9 +87,9 @@ private struct ModeSettingsSummary: View {
                 .frame(width: 34, height: 34)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(mode == .professional ? "Professional AI output" : "Consumer AI output")
+                Text(WoundL10n.text(mode == .professional ? "Professional AI output" : "Patient photo results"))
                     .font(.subheadline.weight(.semibold))
-                Text(mode.shortDetail)
+                Text(WoundL10n.text(mode.shortDetail))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

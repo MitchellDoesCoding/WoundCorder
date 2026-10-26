@@ -33,17 +33,18 @@ enum WoundAppMode: String, CaseIterable, Identifiable {
     }
 
     var analysisPrompt: String {
-        switch self {
-        case .publicPatient:
-            return """
-            You are WoundScope's patient-facing wound documentation assistant. Analyze the wound image cautiously and use simple, reassuring language. Do not diagnose, prescribe, or replace clinician judgment. Return strict JSON only with these keys: summary_html, capture_quality, what_to_watch, care_questions, when_to_contact_clinician, limitations. summary_html must be concise HTML using h2, p, ul, li, and strong tags only. Explain uncertainty plainly and remind the user to contact a clinician for worsening pain, spreading redness, fever, odor, pus, bleeding, or rapid deterioration.
-            """
-        case .professional:
-            return """
-            You are WoundScope's clinician-facing wound documentation assistant. Analyze the wound image cautiously for documentation support, not autonomous diagnosis or treatment. Return strict JSON only with these keys: summary_html, wound_bed_observations, periwound_observations, exudate_or_infection_concerns, severity_rationale, capture_quality, recommended_review_actions, limitations. summary_html must be clinically detailed HTML using h2, p, ul, li, table, tr, th, td, and strong tags only. Include uncertainty, image-quality caveats, and clinician review language.
-            """
-        }
+        let audience = self == .professional
+            ? "Use clinical terminology for the professional reader."
+            : "Use short sentences and common words at a sixth-grade reading level. Explain medical terms."
+        return """
+        You are WoundCorder's wound documentation assistant. \(audience)
+        Use only the supplied top two CNN candidate labels. They are uncertain photo predictions, not diagnoses. Health details may be unknown; do not infer missing details. Do not diagnose, prescribe treatment, add other wound types, or replace a doctor or nurse.
+        If the image or health context is insufficient, ambiguous, conflicting, or does not support the supplied matches, choose unable_to_determine. Never force a match.
+        Return strict JSON with exactly these keys: assessment ("possible_matches" or "unable_to_determine"), candidate_labels (the two distinct supplied class keys for possible_matches, or an empty array for unable_to_determine), summary (string), observations (array of short strings), care_questions (array of short strings), limitations (string).
+        Use plain text, no HTML, Markdown, links, or code. Keep the summary under 80 words, observations to at most 4, and questions to at most 3. Explain uncertainty. Inflammation is not confirmed infection. Remind the reader to seek care for worsening pain, spreading redness, fever, pus, or bleeding that will not stop.
+        """
     }
+
 }
 
 enum HomeAppearanceMode: String, CaseIterable, Identifiable {
@@ -71,22 +72,26 @@ enum HomeAppearanceMode: String, CaseIterable, Identifiable {
     }
 }
 
-enum PatientGender: String, CaseIterable, Identifiable {
+enum PatientGender: String, CaseIterable, Identifiable, Codable {
+    case unknown = "Not given"
     case male = "M"
     case female = "F"
     case other = "O"
+    var displayName: String {
+        switch self { case .unknown: return "Not given"; case .male: return "Male"; case .female: return "Female"; case .other: return "Other" }
+    }
 
     var id: String { rawValue }
 }
 
-enum Laterality: String, CaseIterable, Identifiable {
+enum Laterality: String, CaseIterable, Identifiable, Codable {
     case right = "R"
     case left = "L"
 
     var id: String { rawValue }
 }
 
-enum BodyArea: String, CaseIterable, Identifiable {
+enum BodyArea: String, CaseIterable, Identifiable, Codable {
     case head = "Head"
     case neck = "Neck"
     case shoulder = "Shoulder"
@@ -163,7 +168,7 @@ struct BodyAreaSelectionGroup: Identifiable {
     var id: String { title }
 }
 
-enum WoundContext: String, CaseIterable, Identifiable {
+enum WoundContext: String, CaseIterable, Identifiable, Codable {
     case physicalAccident = "Physical Accident"
     case fire = "Fire"
     case chemicalHazard = "Chemical Hazard"
@@ -176,22 +181,24 @@ enum WoundContext: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-enum WoundedDateOption: String, CaseIterable, Identifiable {
-    case today = "Today"
-    case thisWeek = "This Week"
-    case lastWeek = "Last Week"
-    case lastMonth = "Last Month"
-    case lastThreeMonths = "Last 3 Months"
+enum WoundedDateOption: String, CaseIterable, Identifiable, Codable {
+    case unknown = "Not sure / not given"
+    case today = "Less than 1 day"
+    case thisWeek = "1–7 days"
+    case lastWeek = "8–30 days"
+    case lastMonth = "31–60 days"
+    case lastThreeMonths = "61–120 days"
+    case older = "121 days or more"
 
     var id: String { rawValue }
 }
 
-struct PatientProfile: Equatable {
+struct PatientProfile: Equatable, Codable {
     var name: String = ""
     var mrnOrPID: String = ""
     var height: String = ""
     var weight: String = ""
-    var gender: PatientGender = .other
+    var gender: PatientGender = .unknown
     var age: String = ""
 
     var displayName: String {
@@ -200,11 +207,12 @@ struct PatientProfile: Equatable {
     }
 }
 
-struct WoundIntakeData: Equatable {
+struct WoundIntakeData: Equatable, Codable {
+    var comorbidities = ComorbidityChecklist()
     var laterality: Laterality = .right
     var bodyArea: BodyArea = .lowerLeg
     var contexts: Set<WoundContext> = []
-    var dateWounded: WoundedDateOption = .today
+    var dateWounded: WoundedDateOption = .unknown
     var notes: String = ""
     var prescriptionAttachmentName: String = ""
     var medicineEntries: [String] = []
@@ -295,8 +303,8 @@ final class WoundPhotoCatalogManager: ObservableObject {
 
     func shareText(for photo: CatalogedWoundPhoto) -> String {
         var lines = [
-            "WoundScope photo",
-            "Captured: \(photo.date.formatted(date: .abbreviated, time: .shortened))",
+            "WoundCorder photo",
+            "Captured: \(photo.date.woundFormatted(date: .abbreviated, time: .shortened))",
             "Location: \(photo.displayTitle)"
         ]
         if !photo.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -345,12 +353,8 @@ enum PhotoCatalogError: LocalizedError {
     }
 }
 
-enum WoundSeverityScorer {
-    static func score(area: Float, volume: Float) -> Int {
-        let areaComponent = min(10, max(0, Int((area / 4.0).rounded(.up))))
-        let volumeComponent = min(10, max(0, Int((volume / 2.5).rounded(.up))))
-        return min(20, max(1, areaComponent + volumeComponent))
-    }
+enum WoundMeasurementMath {
+
 
     static func depthCM(area: Float, volume: Float) -> Float {
         guard area > 0, volume > 0 else { return 0 }

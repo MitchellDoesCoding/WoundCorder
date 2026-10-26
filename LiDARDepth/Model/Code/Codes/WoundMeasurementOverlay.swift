@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct WoundMeasurementOverlay: View {
+    @AppStorage("woundLanguage") private var presentationLanguage = WoundLanguage.english.rawValue
     struct Model {
         var areaText: String = "--"
         var volumeText: String = "--"
@@ -16,21 +17,21 @@ struct WoundMeasurementOverlay: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Text("Area:")
+                        Text(WoundL10n.text("Area:"))
                             .font(.headline)
-                        Text(model.areaText)
+                        Text(WoundL10n.text(model.areaText))
                             .font(.headline)
                     }
                     HStack(spacing: 8) {
-                        Text("Volume:")
+                        Text(WoundL10n.text("Volume:"))
                             .font(.subheadline)
-                        Text(model.volumeText + (model.isPreliminary ? " (prelim)" : ""))
+                        Text(WoundL10n.text(model.volumeText + (model.isPreliminary ? " (prelim)" : "")))
                             .font(.subheadline)
                     }
                     HStack(spacing: 8) {
-                        Text("Confidence:")
+                        Text(WoundL10n.text("Confidence:"))
                             .font(.caption)
-                        Text(model.confidence.rawValue)
+                        Text(WoundL10n.text(model.confidence.rawValue))
                             .font(.caption)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -54,7 +55,7 @@ struct WoundMeasurementOverlay: View {
                 } label: {
                     HStack {
                         Image(systemName: "ruler")
-                        Text("Measure Wound")
+                        Text(WoundL10n.text("Measure Wound"))
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -65,7 +66,7 @@ struct WoundMeasurementOverlay: View {
                 } label: {
                     HStack {
                         Image(systemName: "scope")
-                        Text("Select Depth")
+                        Text(WoundL10n.text("Select Depth"))
                     }
                     .frame(maxWidth: .infinity)
                 }

@@ -3,21 +3,33 @@ import CryptoKit
 import Foundation
 
 enum WoundAnalysisProvider: String, CaseIterable, Identifiable {
+    case semanticCNN
     case onDevice
-    case legacyRemote
-
     var id: String { rawValue }
-
     var title: String {
-        switch self {
-        case .onDevice: return "On Device"
-        case .legacyRemote: return "Legacy Server"
-        }
+        let professional = UserDefaults.standard.string(forKey: "woundAppMode") == WoundAppMode.professional.rawValue
+        return name(professional: professional)
+    }
+    func name(professional: Bool) -> String {
+        self == .semanticCNN ? (professional ? "Image-Only Analysis" : "Photo Check") : (professional ? "Image + Clinical Context" : "Photo + Health Context")
+    }
+    var explanation: String {
+        self == .semanticCNN ? "Checks the photo for wound and tissue types. Works on this device without a download." : "Checks the photo and uses the health details you choose to add. Needs a downloaded model and more device memory."
+    }
+}
+
+enum WoundDeviceCapacity {
+    // Conservative eligibility policy, not a guarantee against iOS memory pressure.
+    static var hasEnoughMemory: Bool { ProcessInfo.processInfo.physicalMemory >= 8_000_000_000 }
+    static var canRunContext: Bool { hasEnoughMemory && (OnDeviceMNNBridge.isRuntimeAvailable() || OnDeviceGGUFBridge.isRuntimeAvailable()) }
+    static var explanation: String {
+        hasEnoughMemory ? "This device has enough total memory for the supported context model. Close other apps if analysis stops." : "This device has less than 8 GB of memory. Photo Check is selected to help the app run smoothly."
     }
 }
 
 enum OnDeviceModelRuntime: String, Codable {
     case mnn
+    case gguf
 }
 
 struct OnDeviceModelFile: Codable, Hashable {
@@ -37,10 +49,26 @@ struct OnDeviceModelDescriptor: Codable, Identifiable, Hashable {
     let localFolderName: String
     let files: [OnDeviceModelFile]
     let isBuiltIn: Bool
+    var modelFileName: String? = nil
+    var visionFileName: String? = nil
 
     var totalByteCount: Int64 {
         files.reduce(0) { $0 + $1.byteCount }
     }
+
+    var isRuntimeSupported: Bool { true }
+
+    static let qwen35Q4KS = OnDeviceModelDescriptor(
+        id: "qwen3.5-4b-q4-k-s", displayName: "Qwen3.5-4B (Q4_K_S)",
+        detail: "Recommended. Private photo and health-context analysis. Downloads the model and its vision file.",
+        runtime: .gguf, runtimeVersion: "llama.cpp b11577",
+        sourceBaseURL: "https://huggingface.co/bartowski/Qwen_Qwen3.5-4B-GGUF/resolve",
+        revision: "4168f45a16a1290d65a4ec0fa312ae917a4c15d6", localFolderName: "qwen3.5-4b-q4-k-s",
+        files: [
+            OnDeviceModelFile(name: "Qwen_Qwen3.5-4B-Q4_K_S.gguf", byteCount: 2846156768, sha256: "3a6e5e8144696a87d17f136b06fce7fe5008a42737938056df13e11ddba4a01b"),
+            OnDeviceModelFile(name: "mmproj-Qwen_Qwen3.5-4B-f16.gguf", byteCount: 672423488, sha256: "659b59dd44b73b1cd34af6cc424669484b06dc80f4340adf8ea84ad776eef813")
+        ], isBuiltIn: true
+    )
 
     static let qwen3VL4B = OnDeviceModelDescriptor(
         id: "qwen3-vl-4b-instruct-mnn",
@@ -108,14 +136,14 @@ enum ModelTransferState: Equatable {
 
 final class OnDeviceModelStore: NSObject, ObservableObject {
     static let shared = OnDeviceModelStore()
-    static let defaultModelID = OnDeviceModelDescriptor.qwen3VL4B.id
+    static let defaultModelID = OnDeviceModelDescriptor.qwen35Q4KS.id
 
     @Published private(set) var customModels: [OnDeviceModelDescriptor] = []
     @Published private(set) var transferState: ModelTransferState = .idle
     @Published private(set) var transferProgress: Double = 0
 
     var models: [OnDeviceModelDescriptor] {
-        [OnDeviceModelDescriptor.qwen3VL4B] + customModels
+        [OnDeviceModelDescriptor.qwen35Q4KS, .qwen3VL4B] + customModels
     }
 
     private struct DownloadPlan {
@@ -154,8 +182,9 @@ final class OnDeviceModelStore: NSObject, ObservableObject {
     }
 
     func isInstalled(_ model: OnDeviceModelDescriptor) -> Bool {
+        guard model.isRuntimeSupported else { return false }
         let directory = modelDirectory(for: model)
-        guard fileManager.fileExists(atPath: directory.appendingPathComponent("config.json").path) else {
+        guard model.runtime == .gguf || fileManager.fileExists(atPath: directory.appendingPathComponent("config.json").path) else {
             return false
         }
         if model.files.isEmpty {
@@ -165,6 +194,15 @@ final class OnDeviceModelStore: NSObject, ObservableObject {
     }
 
     func download(_ model: OnDeviceModelDescriptor) {
+        guard WoundDeviceCapacity.canRunContext, model.isRuntimeSupported else {
+            transferState = .failed(modelID: model.id, message: "This model cannot run on this device or in this app build.")
+            return
+        }
+        let available = (try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
+        guard available > model.totalByteCount + 1_000_000_000 else {
+            transferState = .failed(modelID: model.id, message: "There is not enough free storage. Free space and try again, or use Photo Check.")
+            return
+        }
         guard model.isBuiltIn,
               let sourceBaseURL = model.sourceBaseURL,
               let revision = model.revision else {
@@ -210,6 +248,12 @@ final class OnDeviceModelStore: NSObject, ObservableObject {
 
     @MainActor
     func importModel(from sourceURL: URL) async throws -> OnDeviceModelDescriptor {
+        guard WoundDeviceCapacity.canRunContext else { throw ModelStoreError.invalidImportedModel }
+        switch transferState {
+        case .downloading, .verifying, .importing:
+            throw WoundModelImportValidation.Failure.invalid("Wait for the current transfer to finish.")
+        default: break
+        }
         transferState = .importing
         let hasAccess = sourceURL.startAccessingSecurityScopedResource()
         defer {
@@ -221,30 +265,40 @@ final class OnDeviceModelStore: NSObject, ObservableObject {
         do {
             let result = try await Task.detached(priority: .userInitiated) { () -> OnDeviceModelDescriptor in
                 let manager = FileManager.default
-                let configURL = sourceURL.appendingPathComponent("config.json")
-                guard manager.fileExists(atPath: configURL.path) else {
-                    throw ModelStoreError.invalidImportedModel
+                let plan = try WoundModelImportValidation.inspect(sourceURL)
+                let available = (try manager.attributesOfFileSystem(forPath: NSHomeDirectory())[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
+                guard available > plan.bytes + 1_000_000_000 else {
+                    throw WoundModelImportValidation.Failure.invalid("Free more storage before importing this model.")
                 }
-
                 let id = "imported-\(UUID().uuidString.lowercased())"
-                let folderName = id
-                let destination = Self.modelsRootURL
-                    .appendingPathComponent(folderName, isDirectory: true)
-                try manager.createDirectory(at: Self.modelsRootURL, withIntermediateDirectories: true)
-                try manager.copyItem(at: sourceURL, to: destination)
-
-                return OnDeviceModelDescriptor(
-                    id: id,
-                    displayName: sourceURL.deletingPathExtension().lastPathComponent,
-                    detail: "Imported private MNN vision-language model",
-                    runtime: .mnn,
-                    runtimeVersion: "MNN 3.5 compatible",
-                    sourceBaseURL: nil,
-                    revision: nil,
-                    localFolderName: folderName,
-                    files: [],
-                    isBuiltIn: false
-                )
+                let destination = Self.modelsRootURL.appendingPathComponent(id, isDirectory: true)
+                try manager.createDirectory(at: destination, withIntermediateDirectories: true)
+                do {
+                    var root = Self.modelsRootURL
+                    var attributes = URLResourceValues()
+                    attributes.isExcludedFromBackup = true
+                    try root.setResourceValues(attributes)
+                    var files: [OnDeviceModelFile] = []
+                    for source in plan.files {
+                        let target = destination.appendingPathComponent(source.lastPathComponent)
+                        try manager.copyItem(at: source, to: target)
+                        let digest = try Self.sha256(for: target)
+                        let size = Int64(try target.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+                        files.append(OnDeviceModelFile(name: source.lastPathComponent, byteCount: size, sha256: digest))
+                        try digest.write(to: destination.appendingPathComponent(".\(source.lastPathComponent).sha256"), atomically: true, encoding: .utf8)
+                    }
+                    return OnDeviceModelDescriptor(
+                        id: id, displayName: sourceURL.lastPathComponent,
+                        detail: "Imported vision model. Runtime compatibility and output quality depend on the supplied model.",
+                        runtime: plan.gguf ? .gguf : .mnn,
+                        runtimeVersion: plan.gguf ? "llama.cpp b11577 compatible" : "MNN 3.5 compatible",
+                        sourceBaseURL: nil, revision: nil, localFolderName: id,
+                        files: files, isBuiltIn: false,
+                        modelFileName: plan.modelFile, visionFileName: plan.visionFile)
+                } catch {
+                    try? manager.removeItem(at: destination)
+                    throw error
+                }
             }.value
 
             customModels.append(result)
@@ -282,7 +336,7 @@ final class OnDeviceModelStore: NSObject, ObservableObject {
             in: .userDomainMask
         )[0]
         return applicationSupport
-            .appendingPathComponent("WoundScope", isDirectory: true)
+            .appendingPathComponent("WoundCorder", isDirectory: true)
             .appendingPathComponent("Models", isDirectory: true)
     }
 
@@ -347,8 +401,9 @@ final class OnDeviceModelStore: NSObject, ObservableObject {
                 }
             } catch {
                 DispatchQueue.main.async {
-                    try? self?.fileManager.removeItem(at: url)
-                    self?.failCurrentDownload(error.localizedDescription)
+                    guard let self, self.plan?.generation == generation else { return }
+                    try? self.fileManager.removeItem(at: url)
+                    self.failCurrentDownload(error.localizedDescription)
                 }
             }
         }

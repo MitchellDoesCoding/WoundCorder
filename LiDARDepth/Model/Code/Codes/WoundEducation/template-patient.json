@@ -1,0 +1,620 @@
+{
+  "wounds": {
+    "diabetic_foot_ulcer": {
+      "title": "Diabetic foot wound",
+      "images": [
+        "./reference-library/diabetic-foot-ulcer-1.jpg",
+        "./reference-library/diabetic-foot-ulcer-2.jpg"
+      ],
+      "patient": {
+        "description": "An open sore on the foot in a person with diabetes. Nerve damage can make a small cut or blister hard to feel, and reduced blood flow can slow healing. These wounds are often on the toes or the bottom of the foot, so check both feet every day.",
+        "steps": [
+          [
+            "Protect the foot",
+            "Keep pressure off the sore as much as possible and cover it with a clean dressing."
+          ],
+          [
+            "Arrange prompt review",
+            "A foot wound in a person with diabetes should be checked by a healthcare professional, even when it is not very painful."
+          ],
+          [
+            "Get urgent help for danger signs",
+            "Seek urgent care for spreading redness, fever, pus, a bad smell, black tissue, or a foot that becomes cold, pale, or blue."
+          ]
+        ]
+      },
+      "nurse": {
+        "description": "An ulcer on a pressure point such as the ball of the foot, toe, or heel, often ringed by callus. It may be painless and deeper than it looks. The image pattern does not establish diabetes, depth, ischemia, or osteomyelitis.",
+        "steps": [
+          [
+            "Do tonight",
+            "Offload completely and keep weight off the foot. Clean gently without soaking, apply a non-adherent dressing, and check and document blood glucose."
+          ],
+          [
+            "Call the covering physician now if…",
+            "The foot is red, hot, or swollen; there is pus, odor, visible or probeable bone, fever, or a red-hot swollen foot even without an open wound."
+          ]
+        ],
+        "references": [
+          5,
+          16,
+          17
+        ]
+      }
+    },
+    "venous_leg_ulcer": {
+      "title": "Venous leg wound",
+      "images": [
+        "./reference-library/venous-leg-ulcer-1.jpg",
+        "./reference-library/venous-leg-ulcer-2.jpg"
+      ],
+      "patient": {
+        "description": "A sore on the lower leg, often near the ankle, caused when leg veins do not move blood back toward the heart well. The leg may swell and nearby skin may look darker or irritated.",
+        "steps": [
+          [
+            "Arrange a circulation check",
+            "A clinician should confirm the cause and check arterial blood flow before recommending compression."
+          ],
+          [
+            "Protect the area",
+            "Keep the wound gently clean and covered, and raise the leg when your care team says it is safe."
+          ],
+          [
+            "Get help if it worsens",
+            "Contact your care team for increasing pain, redness, swelling, drainage, odor, fever, or a wound that is not improving."
+          ]
+        ]
+      },
+      "nurse": {
+        "description": "A shallow, wet, irregular ulcer, often at the inner lower leg or ankle, with brown-stained, swollen, or firm surrounding skin. Image appearance alone cannot exclude arterial or mixed disease.",
+        "steps": [
+          [
+            "Do tonight",
+            "Clean gently, apply an absorbent non-adherent dressing, elevate the leg, and use compression only when it is already ordered. Do not start compression overnight."
+          ],
+          [
+            "Call the covering physician now if…",
+            "Redness is spreading, fever is present, the foot is cold, pale, or painful, or the calf is newly hot and swollen."
+          ]
+        ],
+        "references": [
+          12,
+          13,
+          14
+        ]
+      }
+    },
+    "arterial_ischemic_ulcer": {
+      "title": "Arterial / ischemic ulcer",
+      "images": [],
+      "patient": {
+        "description": "A wound caused by too little blood flow, often on a toe, foot, heel, or shin. It may be painful, look punched out, or have a pale or black base, and the foot may feel cool.",
+        "steps": [
+          [
+            "Protect and keep dry",
+            "Cover with a clean dry non-stick dressing. Do not soak the wound or use compression unless a clinician has specifically ordered it."
+          ],
+          [
+            "Get prompt circulation care",
+            "This type of wound needs an in-person blood-flow assessment."
+          ],
+          [
+            "Get emergency help",
+            "Seek emergency care for a suddenly cold, pale, blue, numb, weak, or severely painful foot or leg."
+          ]
+        ]
+      },
+      "nurse": {
+        "description": "A painful, punched-out ulcer on a toe, foot, heel, or shin, often with a pale or dry black base and a cool, shiny limb. This is an educational guide category; arterial ulcer is not a direct WCEfficientNet output class.",
+        "steps": [
+          [
+            "Do tonight",
+            "Keep the wound dry under a sterile non-adherent cover. Do not soak, compress, or debride. Protect pressure points and keep the limb warm and at rest."
+          ],
+          [
+            "Call the covering physician now if…",
+            "Any of the 6 Ps are present, rest pain develops, or black tissue is spreading or becoming wet or malodorous."
+          ]
+        ],
+        "references": [
+          10,
+          12,
+          15
+        ]
+      }
+    },
+    "pressure_injury": {
+      "title": "Pressure injury",
+      "images": [
+        "./reference-library/pressure-injury-1.jpg",
+        "./reference-library/pressure-injury-2.jpg"
+      ],
+      "patient": {
+        "description": "Skin and tissue damage caused by staying in one position too long. It often develops over a bone such as the heel, hip, tailbone, or back when pressure reduces blood flow.",
+        "steps": [
+          [
+            "Remove pressure",
+            "Change position and keep weight off the area. Ask the care team about a pressure-relieving surface or heel support."
+          ],
+          [
+            "Protect the skin",
+            "Keep the area clean and dry, and do not massage or scrub damaged skin."
+          ],
+          [
+            "Ask for a wound assessment",
+            "Broken skin, a dark purple area, a blister, black tissue, drainage, odor, or increasing pain needs professional review."
+          ]
+        ]
+      },
+      "nurse": {
+        "description": "Skin breakdown over a bony area or under a device, ranging from non-blanching erythema to a deep open wound. A photograph cannot reliably stage it or establish depth, tunneling, undermining, or deep-tissue injury.",
+        "steps": [
+          [
+            "Do tonight",
+            "Offload and reposition—typically turn every 2 hours, float heels, and keep the head of bed at 30 degrees or less when clinically feasible. Keep skin clean and dry, use barrier protection, and relieve device pressure. Do not stage depth from the photo."
+          ],
+          [
+            "Call the covering physician now if…",
+            "There is purple or maroon deep discoloration; eschar with surrounding redness, warmth, bogginess, drainage, or odor; exposed bone or tendon; or fever."
+          ]
+        ],
+        "references": [
+          6,
+          18
+        ]
+      }
+    },
+    "abrasion": {
+      "title": "Abrasion (scrape)",
+      "images": [
+        "./reference-library/abrasion-1.jpg",
+        "./reference-library/abrasion-2.jpg"
+      ],
+      "patient": {
+        "description": "A shallow wound where the top layer of skin has been rubbed or scraped away, often after a fall or contact with a rough surface. It may sting, look red, and ooze a little.",
+        "steps": [
+          [
+            "Clean gently",
+            "Rinse with clean running water, remove loose dirt you can easily see, and cover with a clean non-stick dressing."
+          ],
+          [
+            "Watch the trend",
+            "Most small scrapes improve with simple care. Contact a clinician if redness, swelling, warmth, pain, drainage, or odor increases."
+          ],
+          [
+            "Get help for difficult scrapes",
+            "Seek care for a large wound, deeply embedded dirt, a facial wound, or debris that cannot be removed gently."
+          ]
+        ]
+      },
+      "nurse": {
+        "description": "A broad, shallow superficial scrape that may ooze. Confirm that it is not a deeper laceration, burn, or pressure injury.",
+        "steps": [
+          [
+            "Do tonight",
+            "Irrigate to remove dirt and grit, apply petrolatum or a non-adherent moist dressing, and check tetanus status."
+          ],
+          [
+            "Call the covering physician now if…",
+            "The abrasion is deep or extensive, embedded debris cannot be rinsed away, or infection signs are present."
+          ]
+        ],
+        "references": [
+          20,
+          21,
+          22
+        ]
+      }
+    },
+    "laceration_or_cut": {
+      "title": "Laceration or cut",
+      "images": [
+        "./reference-library/laceration-1.jpg",
+        "./reference-library/laceration-2.jpg"
+      ],
+      "patient": {
+        "description": "A tear or slice in the skin, often from a sharp object. A deep cut may gape open, bleed heavily, or damage structures under the skin.",
+        "steps": [
+          [
+            "Control bleeding",
+            "Press firmly with clean gauze or cloth and keep steady pressure on the wound."
+          ],
+          [
+            "Clean and cover",
+            "Rinse a small cut with clean water and cover it. Do not remove a deeply stuck object."
+          ],
+          [
+            "Know when to get urgent care",
+            "Get help for bleeding that will not stop, a deep or gaping cut, a bite, numbness, loss of movement, or an injury over a joint."
+          ]
+        ]
+      },
+      "nurse": {
+        "description": "A traumatic break in the skin with clean or ragged edges and possible deeper-structure involvement. Image review cannot exclude vascular, nerve, tendon, joint, bone, or retained-foreign-body injury.",
+        "steps": [
+          [
+            "Do tonight",
+            "Use continuous direct pressure to stop bleeding, irrigate with saline or potable tap water, cover, check sensation, movement, and distal pulses, and document injury time and tetanus status."
+          ],
+          [
+            "Call the covering physician now if…",
+            "Bleeding does not stop; numbness or weakness suggests nerve or tendon injury; the wound is deep or gaping; the injury is a bite; or tense swelling or pain out of proportion suggests compartment syndrome."
+          ]
+        ],
+        "references": [
+          19,
+          20,
+          21
+        ]
+      }
+    },
+    "burn": {
+      "title": "Burn",
+      "images": [
+        "./reference-library/burn-1.jpg",
+        "./reference-library/burn-2.jpg"
+      ],
+      "patient": {
+        "description": "Skin damage from heat, fire, hot liquid, chemicals, electricity, or the sun. A mild burn may be red and sore; a deeper burn can blister or look white, brown, or black. A burn can become deeper over the first few days, so an early photo can be misleading.",
+        "steps": [
+          [
+            "Stop and cool",
+            "Move away from the source and cool a small heat burn with cool running water. Do not use ice."
+          ],
+          [
+            "Cover loosely",
+            "Use a clean non-stick covering and avoid breaking blisters."
+          ],
+          [
+            "Seek urgent help when needed",
+            "Get urgent care for a large, deep, very painful, chemical, electrical, circumferential, facial, hand, genital, or airway burn."
+          ]
+        ]
+      },
+      "nurse": {
+        "description": "A thermal, chemical, or electrical skin injury that may be red and dry, blistered and moist, or leathery or white. Depth can evolve over 1–3 days, and a photograph cannot determine total body surface area, inhalation injury, depth progression, or systemic effects.",
+        "steps": [
+          [
+            "Do tonight",
+            "Cool a recent thermal burn under cool running water for up to about 20 minutes—never use ice. Remove rings or tight items before swelling, cover with a clean non-adherent dressing or cling film, provide analgesia under local orders, and irrigate chemical burns copiously."
+          ],
+          [
+            "Call the covering physician now if…",
+            "There is facial soot, hoarseness, breathing difficulty, a large or circumferential burn, chemical or electrical injury, or involvement of the face, hands, feet, genitals, or major joints."
+          ]
+        ],
+        "references": [
+          7,
+          26
+        ]
+      }
+    },
+    "bruise": {
+      "title": "Bruise (contusion)",
+      "images": [
+        "./reference-library/bruise-1.jpg",
+        "./reference-library/bruise-2.jpg"
+      ],
+      "patient": {
+        "description": "Bleeding under unbroken skin after a bump or hit. It may look black, blue, purple, green, or yellow as it heals, and can be sore or swollen.",
+        "steps": [
+          [
+            "Use simple comfort measures",
+            "Rest the area, raise it when practical, and use a cold pack wrapped in cloth during the first day."
+          ],
+          [
+            "Expect gradual fading",
+            "Many bruises improve over one to two weeks. Do not rely on color alone to judge severity."
+          ],
+          [
+            "Ask for help if unusual",
+            "Get care for severe pain, numbness, a rapidly enlarging swelling, suspected fracture, or large unexplained bruises."
+          ]
+        ]
+      },
+      "nurse": {
+        "description": "A closed injury with intact skin and blood under the skin. Color does not reliably date the injury, and image appearance cannot exclude fracture, compartment syndrome, deeper hematoma, coagulopathy, or non-accidental injury.",
+        "steps": [
+          [
+            "Do tonight",
+            "Rest, apply ice over a cloth, elevate gently, document size and location with a photo or body map, and note anticoagulant use."
+          ],
+          [
+            "Call the covering physician now if…",
+            "Swelling is tense, expanding, or pulsatile; there is severe pain, pain on stretch, or numbness; fracture is possible; bruising is large and unexplained; or the pattern raises a safeguarding concern."
+          ]
+        ],
+        "references": [
+          23,
+          24,
+          25
+        ]
+      }
+    },
+    "normal_control": {
+      "title": "No open-wound pattern",
+      "images": [],
+      "patient": {
+        "description": "The model did not find a strong open-wound pattern in this photo. The skin may still have a scar, bruise, color change, rash, closed injury, infection, or another problem.",
+        "steps": [
+          [
+            "Trust symptoms over the result",
+            "Contact a clinician if the area is painful, hot, swollen, changing, draining, or worrying you."
+          ],
+          [
+            "Retake only if useful",
+            "A clearer photo may help the image check, but it cannot replace an in-person assessment."
+          ]
+        ]
+      },
+      "nurse": {
+        "description": "The model found no dominant open-wound pattern. Intact skin may still contain a scar, bruise, callus, discoloration, or benign or pathologic non-open lesion.",
+        "steps": [
+          [
+            "Do tonight",
+            "No wound dressing is needed for intact skin. Document color, moisture, integrity, and temperature; inspect bony prominences and areas under devices; keep skin clean and dry; and moisturize dry skin."
+          ],
+          [
+            "Flag for review if…",
+            "There is non-blanching redness over a bony prominence, a new lesion that appears to be opening, or a mole or lesion with concerning features. Use the universal call-now criteria for any acute danger sign."
+          ]
+        ],
+        "references": [
+          6,
+          18,
+          29
+        ]
+      }
+    },
+    "surgical_wound": {
+      "title": "Surgical cut",
+      "images": [],
+      "patient": {
+        "description": "A cut made during an operation. It may be closed with stitches, staples, or glue, or it may be left open to heal. Follow the discharge plan from your surgical team.",
+        "steps": [
+          [
+            "Follow your own care plan",
+            "Use the dressing and activity instructions given by the surgical team."
+          ],
+          [
+            "Contact the surgical team",
+            "Call the same day for new drainage, bad odor, spreading redness, fever, worsening pain, or edges that begin to open."
+          ],
+          [
+            "Get emergency help",
+            "Call 911 or go to an emergency room if the cut opens widely, tissue is bulging out, or bleeding will not stop."
+          ]
+        ]
+      },
+      "nurse": {
+        "description": "An incision with sutures, staples, or adhesive, or an open healing surgical wound. Mild early redness can be expected; describe redness as a finding to correlate rather than declaring infection from appearance alone.",
+        "steps": [
+          [
+            "Do tonight",
+            "Observe closure and drainage, use the protocol dressing, and document the extent of redness, drainage, and the pain trend."
+          ],
+          [
+            "Call the covering physician now if…",
+            "Edges are separating or tissue is protruding; drainage is deep or purulent; redness is spreading; fever or rising pain is present; or crepitus or bullae appear."
+          ]
+        ],
+        "references": [
+          11,
+          27,
+          28
+        ]
+      }
+    },
+    "other_unusual": {
+      "title": "Other / unusual appearance",
+      "images": [],
+      "patient": {
+        "description": "The appearance does not fit one of the common wound groups in this guide, or the app is not sure. A nurse or doctor needs to look at it in person.",
+        "steps": [
+          [
+            "Arrange an in-person review",
+            "Do not use an uncertain app label to choose treatment. Share the photo and your symptoms with a healthcare professional."
+          ],
+          [
+            "Use the warning signs above",
+            "Get same-day or emergency help when any listed warning sign is present, no matter what the photo looks like."
+          ]
+        ]
+      },
+      "nurse": {
+        "description": "An educational routing category for an unusual or unclassified appearance. It is not a direct WCEfficientNet output class.",
+        "steps": [
+          [
+            "Assess directly",
+            "Use history, examination, perfusion, depth, drainage, pain, temperature, and systemic findings rather than forcing the image into a trained category."
+          ],
+          [
+            "Escalate when needed",
+            "Apply the universal call-now criteria and arrange specialty review for an atypical, malignant-appearing, inflammatory, or otherwise unexplained wound."
+          ]
+        ],
+        "references": []
+      }
+    }
+  },
+  "tissues": {
+    "inflammation": {
+      "title": "Inflammation",
+      "patient": "Redness, warmth, swelling, or pain around a wound. Some inflammation can occur early in healing. Redness alone does not prove infection, but spreading redness, worsening pain, pus, odor, fever, or feeling unwell needs medical review.",
+      "nurse": "An image-level inflammation signal, not confirmation of infection or cellulitis. Correlate with change in pain, warmth, edema, exudate, odor, friability, delayed healing, spreading erythema, and systemic findings.",
+      "overnight": "Mark and document the extent of redness; check pain, warmth, drainage, odor, fever, and systemic status. Escalate spreading change or systemic findings.",
+      "references": [
+        2,
+        37
+      ]
+    },
+    "necrotic_eschar": {
+      "title": "Necrosis / eschar",
+      "patient": "Dead tissue that has lost its blood supply. Dry, hard black tissue is called eschar; wet dead tissue may look dark yellow or brown. Keep stable dry black tissue dry and do not remove it yourself. Call the same day if it becomes wet, smelly, or red around the edges.",
+      "nurse": "Predicted visual presence of devitalized tissue, not a percentage or debridement instruction. Do not debride dry ischemic or stable heel eschar before vascular and specialist assessment.",
+      "overnight": "Keep stable dry black eschar dry and covered. Do not soak or debride. Call now if it is wet, boggy, malodorous, expanding, or rimmed by redness.",
+      "references": [
+        30,
+        34,
+        35
+      ]
+    },
+    "slough_fibrin": {
+      "title": "Slough / fibrin",
+      "patient": "Slough is soft, stringy yellow, tan, or gray material that can slow healing. Fibrin is often a thinner yellow-white film. Do not scrape or pick at either one; let a clinician decide whether treatment is needed.",
+      "nurse": "Predicted visual presence of slough/fibrin. Correlate with depth, perfusion, bioburden, exudate, and goals of care before selecting a debridement or moisture strategy.",
+      "overnight": "Describe the amount and color, balance drainage with an appropriate dressing, and leave thin fibrin in place. Leave debridement to the day team and do not scrape the wound bed overnight.",
+      "references": [
+        30,
+        32
+      ]
+    },
+    "granulation": {
+      "title": "Granulation",
+      "patient": "Healthy new tissue that fills the wound. It often looks red or pink, bumpy, and moist and is usually a good sign of healing. Protect it with the dressing your care team recommends.",
+      "nurse": "Predicted visual presence of granulation tissue, not proof that the bed is fully granulating. Protect viable tissue and evaluate friability or hypergranulation in context.",
+      "overnight": "Keep viable tissue moist and protected, and avoid disturbing it. Flag dark or dusky red tissue for perfusion or infection assessment.",
+      "references": [
+        30,
+        31
+      ]
+    },
+    "epithelial": {
+      "title": "Epithelium (new skin)",
+      "patient": "Thin pink or pearly new skin that grows from the wound edges toward the center. It is a good sign that the wound is closing. Protect this fragile skin.",
+      "nurse": "Predicted visual presence of epithelial tissue. Protect the advancing edge and address maceration, epibole, friction, and moisture imbalance that may stall closure.",
+      "overnight": "Protect the advancing edge with a non-adherent dressing and avoid stripping or tearing fragile new skin.",
+      "references": [
+        32,
+        33
+      ]
+    },
+    "callus": {
+      "title": "Callus",
+      "patient": "Thick, hard, pale skin caused by repeated pressure or rubbing. Around a foot wound, keep pressure off the area and have a clinician check it. Do not cut or shave it yourself.",
+      "nurse": "Predicted visual presence of callus. Assess offloading, neuropathy, perfusion, and concealed ulceration; debride only when clinically appropriate and adequately perfused.",
+      "overnight": "Offload the area. Do not trim callus overnight; leave definitive management to podiatry or the wound-care team.",
+      "references": [
+        16,
+        36
+      ]
+    },
+    "maceration": {
+      "title": "Maceration",
+      "patient": "Skin that is too wet from drainage can look white, soft, soggy, or wrinkled. Keep the nearby skin protected, do not soak it, and ask whether the dressing needs to change.",
+      "nurse": "Soggy, white, or wrinkled peri-wound skin suggests excess moisture or drainage and increased risk of skin breakdown.",
+      "overnight": "Protect surrounding skin with a barrier film or cream, use a more absorbent dressing, and manage incontinence or other moisture. Do not soak.",
+      "references": [
+        30,
+        38
+      ]
+    },
+    "normal_skin": {
+      "title": "Normal-skin signal",
+      "patient": "The photo contains skin that looks similar to the model’s normal-skin examples. This does not rule out a skin problem.",
+      "nurse": "Image-level normal-skin signal. It is not a negative diagnostic test and does not exclude non-open pathology."
+    },
+    "background_non_skin": {
+      "title": "Image adequacy concern",
+      "patient": "The photo may include too much background or may not show the area clearly. A clearer photo can help, but symptoms matter more than the image result.",
+      "nurse": "The background/non-skin signal crossed threshold. Treat wound and tissue outputs as potentially unreliable and repeat imaging if clinically useful."
+    }
+  },
+  "references": [
+    "Hazenberg CE, van Netten JJ, van Baal SG, Bus SA. Assessment of Signs of Foot Infection in Diabetes Patients Using Photographic Foot Imaging and Infrared Thermography. Diabetes Technology & Therapeutics. 2014;16(6):370–377. doi:10.1089/dia.2013.0251.",
+    "Reddy M, Gill SS, Wu W, Kalkar SR, Rochon PA. Does This Patient Have an Infection of a Chronic Wound? JAMA. 2012;307(6):605–611. doi:10.1001/jama.2012.98.",
+    "Chambliss ML, Rumball A, Brown CM. Skin and Soft Tissue Infections. American Family Physician. 2026;113:440–448.",
+    "Alayed KA, Tan C, Daneman N. Red Flags for Necrotizing Fasciitis: A Case Control Study. International Journal of Infectious Diseases. 2015;36:15–20. doi:10.1016/j.ijid.2015.04.021.",
+    "Peters EJG, Lipsky BA. Algorithms for Diagnosis and Management of Infection in the Diabetic Foot. In: The Foot in Diabetes. 5th ed. 2020.",
+    "Visconti AJ, Sola OI, Raghavan PV. Pressure Injuries: Prevention, Evaluation, and Management. American Family Physician. 2023;108(2):166–174.",
+    "Hewett Brumberg EK, Douma MJ, Alibertis K, et al. 2024 American Heart Association and American Red Cross Guidelines for First Aid. Circulation. 2024;150(24):e519–e579. doi:10.1161/CIR.0000000000001281.",
+    "Nelson M. First Aid: Guidelines From the American Heart Association and American Red Cross. American Family Physician. 2026;113(3):287–290.",
+    "Gornik HL, Aronow HD, Goodney PP, et al. 2024 Guideline for the Management of Lower Extremity Peripheral Artery Disease. Journal of the American College of Cardiology. 2024;83(24):2497–2604. doi:10.1016/j.jacc.2024.02.013.",
+    "Conte MS, Bradbury AW, Kolh P, et al. Global Vascular Guidelines on the Management of Chronic Limb-Threatening Ischemia. Journal of Vascular Surgery. 2019;69(6S):3S–125S.e40. doi:10.1016/j.jvs.2019.02.016.",
+    "Gonzalez M, Ruffa T, Scaravonati R, et al. Fascial dehiscence: predictable complication? Development and validation of a risk model. Langenbeck’s Archives of Surgery. 2023;408(1):50. doi:10.1007/s00423-023-02782-y.",
+    "Singer AJ, Tassiopoulos A, Kirsner RS. Evaluation and Management of Lower-Extremity Ulcers. New England Journal of Medicine. 2017;377(16):1559–1567. doi:10.1056/NEJMra1615243.",
+    "O’Donnell TF, Passman MA, Marston WA, et al. Management of Venous Leg Ulcers: Clinical Practice Guidelines of the Society for Vascular Surgery and the American Venous Forum. Journal of Vascular Surgery. 2014;60(2 Suppl):3S–59S. doi:10.1016/j.jvs.2014.04.049.",
+    "Bonkemeyer Millan S, Gan R, Townsend PE. Venous Ulcers: Diagnosis and Treatment. American Family Physician. 2019;100(5):298–305.",
+    "Farber A. Chronic Limb-Threatening Ischemia. New England Journal of Medicine. 2018;379(2):171–180. doi:10.1056/NEJMcp1709326.",
+    "Armstrong DG, Tan TW, Boulton AJM, Bus SA. Diabetic Foot Ulcers: A Review. JAMA. 2023;330(1):62–75. doi:10.1001/jama.2023.10578.",
+    "Schaper NC, van Netten JJ, Apelqvist J, et al. Practical guidelines on the prevention and management of diabetes-related foot disease: IWGDF 2023 update. Diabetes/Metabolism Research and Reviews. 2024;40(3):e3657. doi:10.1002/dmrr.3657.",
+    "Burkhart E, Huhn C, Camarce V, et al. Prevention and Management of Pressure Injuries (PIP). Department of Veterans Affairs. 2026.",
+    "Mankowitz SL. Laceration Management. Journal of Emergency Medicine. 2017;53(3):369–382. doi:10.1016/j.jemermed.2017.05.026.",
+    "Singer AJ, Dagum AB. Current Management of Acute Cutaneous Wounds. New England Journal of Medicine. 2008;359(10):1037–1046. doi:10.1056/NEJMra0707253.",
+    "Worster B, Zawora MQ, Hsieh C. Common Questions About Wound Care. American Family Physician. 2015;91(2):86–92.",
+    "Quinn RH, Wedmore I, Johnson E, et al. Wilderness Medical Society Practice Guidelines for Basic Wound Management in the Austere Environment. Wilderness & Environmental Medicine. 2014;25(3):295–310. doi:10.1016/j.wem.2014.04.005.",
+    "Hughes PR, Lewis MN, Adams SS. Bleeding and Bruising: Primary Care Evaluation. American Family Physician. 2024;110(5):504–514.",
+    "Craig J, Gray Linnecor B, Neil M. Soft Tissue, Peripheral Nerve and Brachial Plexus Injury. In: Orthopaedic and Trauma Nursing—An Evidence-based Approach to Musculoskeletal Care. 2nd ed. 2023.",
+    "Davis ML, Della Rocca GJ, Brenner M, et al. Best Practices in the Management of Orthopaedic Trauma. American College of Surgeons. 2015.",
+    "Bitter CC, Storkan M, Overmiller A, et al. Wilderness Medical Society Clinical Practice Guideline on Care of Burns in the Wilderness. Wilderness & Environmental Medicine. 2025;36(4):549–558. doi:10.1177/10806032251345768.",
+    "Waltz PK, Zuckerbraun BS. Surgical Site Infections and Associated Operative Characteristics. Surgical Infections. 2017;18(4):447–450. doi:10.1089/sur.2017.062.",
+    "Seidelman JL, Mantyh CR, Anderson DJ. Surgical Site Infection Prevention: A Review. JAMA. 2023;329(3):244–252. doi:10.1001/jama.2022.24075.",
+    "Kottner J, Surber C. Skin Care in Nursing: A Critical Discussion of Nursing Practice and Research. International Journal of Nursing Studies. 2016;61:20–28. doi:10.1016/j.ijnurstu.2016.05.002.",
+    "Donnelly J, Collins A. Wound Management, Tissue Viability and Infection. In: Orthopaedic and Trauma Nursing—An Evidence-based Approach to Musculoskeletal Care. 2nd ed. 2023.",
+    "Mukherjee R, Tewary S, Routray A. Diagnostic and Prognostic Utility of Non-Invasive Multimodal Imaging in Chronic Wound Monitoring: a Systematic Review. Journal of Medical Systems. 2017;41(3):46. doi:10.1007/s10916-016-0679-y.",
+    "Stefanelli A, Zahia S, Chanel G, et al. Developing an AI-powered wound assessment tool: a methodological approach to data collection and model optimization. BMC Medical Informatics and Decision Making. 2025;25(1):297. doi:10.1186/s12911-025-03144-y.",
+    "Kang H, Oh B, Lee S, et al. Development of a multi-task learning framework with GradNorm for precise wound tissue analysis. PLOS ONE. 2026;21(2):e0340258. doi:10.1371/journal.pone.0340258.",
+    "Westby MJ, Dumville JC, Soares MO, et al. Dressings and topical agents for treating pressure ulcers. Cochrane Database of Systematic Reviews. 2017. doi:10.1002/14651858.CD011947.pub2.",
+    "Morgado AC, Carvalho R, Sampaio AF, Vasconcelos MJM. Enhancing chronic wound assessment through agreement analysis and tissue segmentation. Scientific Reports. 2025;15(1):22244. doi:10.1038/s41598-025-06703-5.",
+    "Vas PRJ, Edmonds ME. Approach to a New Diabetic Foot Ulceration. In: The Foot in Diabetes. 5th ed. 2020.",
+    "Hampton J, Sharpe A, McCluskey P, et al. Diagnosis and treatment of infected wounds: A multi-centre audit of current clinical practice across the UK, Ireland and Scandinavia. Journal of Clinical Nursing. 2023;32(15–16):4730–4740. doi:10.1111/jocn.16527.",
+    "Whitehead F, Giampieri S, Graham T, Grocott P. Identifying, Managing and Preventing Skin Maceration: A Rapid Review of the Clinical Evidence. Journal of Wound Care. 2017;26(4):159–165. doi:10.12968/jowc.2017.26.4.159.",
+    "Shi C, Dumville JC, Cullum N, et al. Compression bandages or stockings versus no compression for treating venous leg ulcers. Cochrane Database of Systematic Reviews. 2021. doi:10.1002/14651858.CD013397.pub2."
+  ],
+  "triage": {
+    "purpose": "This is an overnight first-aid and triage aid for floor nursing staff. Use it to decide what to do tonight to keep the wound safe and what findings mean call the covering physician now rather than waiting for the wound-care specialist to round. It is not a treatment protocol; the wound-care nurse or physician sets definitive orders.",
+    "modelRole": "The WCEfficientNet result is a starting suggestion, not a diagnosis. Examine the patient and wound, use the matching wound-type guidance, and check every universal red flag. Bedside red flags override the model result; a benign-looking label never cancels a dangerous finding.",
+    "redFlags": [
+      [
+        "Possible necrotizing infection",
+        "Spreading or rapidly advancing redness, severe pain out of proportion, dusky or purple skin, bullae, or crepitus.",
+        [
+          3,
+          4
+        ]
+      ],
+      [
+        "Systemic infection or sepsis",
+        "Fever, chills, confusion, hypotension, or tachycardia.",
+        [
+          5,
+          6
+        ]
+      ],
+      [
+        "Uncontrolled bleeding",
+        "Bleeding that is spurting, pooling, or will not stop with firm continuous direct pressure. Continue pressure and escalate immediately; use a tourniquet proximal to a bleeding limb only when bleeding is truly life-threatening and according to local protocol.",
+        [
+          7,
+          8
+        ]
+      ],
+      [
+        "Acute limb ischemia",
+        "A cold, pale, pulseless, painful, numb, or weak limb—the “6 Ps.” This is time-critical.",
+        [
+          9,
+          10
+        ]
+      ],
+      [
+        "Exposed structure or wound failure",
+        "Exposed or probeable bone or tendon, wound-edge separation, or tissue or organ protruding from a surgical wound.",
+        [
+          6,
+          11
+        ]
+      ],
+      [
+        "High-risk burn",
+        "Facial soot, hoarseness, breathing difficulty, a large burn, or a circumferential burn of a limb or the chest.",
+        [
+          7
+        ]
+      ]
+    ],
+    "documentation": "Do not turn a color impression into a tissue percentage such as “about 100% granulation.” Tissue boundaries are unreliable even between experts. Describe what you see and leave quantification to validated tools or the day team.",
+    "universalDos": "Clean gently with saline or potable tap water; keep most wounds covered and appropriately moist; keep stable dry eschar dry; control bleeding with continuous direct pressure; offload pressure and reposition; check tetanus status when skin is broken; document location, measurements, appearance, drainage, pain, and bedside findings; and manage pain under local orders.",
+    "universalDonts": "Do not start or change compression without an order and adequate perfusion assessment; do not debride overnight; do not start antibiotics from a photograph or redness alone; and do not let a reassuring model result override a red flag."
+  }
+}

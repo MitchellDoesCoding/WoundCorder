@@ -1,0 +1,5 @@
+"NSCameraUsageDescription" = "WoundCorder utilise la caméra et les capteurs de profondeur pour scanner et mesurer les plaies visibles.";
+"NSLocationWhenInUseUsageDescription" = "La localisation peut ajouter un contexte facultatif aux mesures de plaies.";
+"NSMicrophoneUsageDescription" = "WoundCorder utilise le microphone uniquement pour enregistrer une note vocale facultative.";
+"NSPhotoLibraryAddUsageDescription" = "WoundCorder peut enregistrer les images du scan et les exports 3D dans votre photothèque.";
+"NSPhotoLibraryUsageDescription" = "WoundCorder accède aux photos lorsque vous sélectionnez des images de plaies, ordonnances ou notes.";

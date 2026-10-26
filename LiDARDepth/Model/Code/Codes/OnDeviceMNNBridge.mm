@@ -1,9 +1,11 @@
 #import "OnDeviceMNNBridge.h"
 
 #import <TargetConditionals.h>
+#import <os/proc.h>
 
 #include <algorithm>
 #include <memory>
+#include <exception>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -22,7 +24,7 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _inferenceQueue = dispatch_queue_create("com.woundscope.mnn-inference", DISPATCH_QUEUE_SERIAL);
+        _inferenceQueue = dispatch_queue_create("com.woundcorder.mnn-inference", DISPATCH_QUEUE_SERIAL);
     }
     return self;
 }
@@ -43,6 +45,7 @@
                    error:@"On-device Qwen inference requires a physical iPhone or iPad."];
 #else
         @autoreleasepool {
+            try {
             NSString *configPath = [modelPath stringByAppendingPathComponent:@"config.json"];
             BOOL isDirectory = NO;
             BOOL modelExists = [[NSFileManager defaultManager] fileExistsAtPath:modelPath isDirectory:&isDirectory];
@@ -54,6 +57,11 @@
                 return;
             }
 
+            self->_llm.reset();
+            if (os_proc_available_memory() < 4500000000ULL) {
+                [self finishLoad:completion success:NO error:@"There is not enough free memory right now. Close other apps or use Photo Check."];
+                return;
+            }
             std::string config = configPath.UTF8String;
             self->_llm.reset(MNN::Transformer::Llm::createLLM(config));
             if (!self->_llm) {
@@ -61,7 +69,7 @@
                 return;
             }
 
-            NSString *cacheRoot = [NSTemporaryDirectory() stringByAppendingPathComponent:@"WoundScope-MNN"];
+            NSString *cacheRoot = [NSTemporaryDirectory() stringByAppendingPathComponent:@"WoundCorder-MNN"];
             NSError *directoryError = nil;
             [[NSFileManager defaultManager] createDirectoryAtPath:cacheRoot
                                       withIntermediateDirectories:YES
@@ -85,6 +93,10 @@
             }
 
             [self finishLoad:completion success:YES error:nil];
+            } catch (const std::exception &exception) {
+                self->_llm.reset();
+                [self finishLoad:completion success:NO error:@"The model could not load. Use Photo Check or try again."];
+            }
         }
 #endif
     });
@@ -101,6 +113,7 @@
                         error:@"On-device Qwen inference requires a physical iPhone or iPad."];
 #else
         @autoreleasepool {
+            try {
             if (!self->_llm) {
                 [self finishInference:completion output:nil error:@"No on-device model is loaded."];
                 return;
@@ -118,7 +131,7 @@
             imagePart.height = (int)CGImageGetHeight(image.CGImage);
 
             MNN::Transformer::MultimodalPrompt multimodalPrompt;
-            multimodalPrompt.prompt_template = prompt.UTF8String;
+            multimodalPrompt.prompt_template = std::string("<img>wound</img>\n") + prompt.UTF8String;
             multimodalPrompt.images["wound"] = imagePart;
 
             self->_llm->reset();
@@ -140,6 +153,9 @@
                 return;
             }
             [self finishInference:completion output:result error:nil];
+            } catch (const std::exception &exception) {
+                [self finishInference:completion output:nil error:@"The model could not finish. Your Photo Check is still available."];
+            }
         }
 #endif
     });
@@ -187,11 +203,11 @@
     CGContextRelease(context);
 
     auto tensor = MNN::Express::_Input(
-        {1, (int)height, (int)width, 3},
+        {(int)height, (int)width, 3},
         MNN::Express::NHWC,
-        halide_type_of<float>()
+        halide_type_of<uint8_t>()
     );
-    float *destination = tensor->writeMap<float>();
+    uint8_t *destination = tensor->writeMap<uint8_t>();
     if (!destination) {
         return MNN::Express::VARP();
     }
@@ -199,9 +215,10 @@
     for (size_t pixel = 0; pixel < width * height; ++pixel) {
         size_t source = pixel * 4;
         size_t target = pixel * 3;
-        destination[target] = pixels[source] / 255.0f;
-        destination[target + 1] = pixels[source + 1] / 255.0f;
-        destination[target + 2] = pixels[source + 2] / 255.0f;
+        // MNN vision preprocessing expects HWC BGR bytes and performs its own normalization.
+        destination[target] = pixels[source + 2];
+        destination[target + 1] = pixels[source + 1];
+        destination[target + 2] = pixels[source];
     }
     return tensor;
 }
@@ -216,6 +233,9 @@
 - (void)finishInference:(WCMNNInferenceCompletion)completion
                   output:(NSString *)output
                    error:(NSString *)error {
+#if !TARGET_OS_SIMULATOR
+    self->_llm.reset();
+#endif
     dispatch_async(dispatch_get_main_queue(), ^{
         completion(output, error);
     });

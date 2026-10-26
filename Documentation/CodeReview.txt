@@ -1,0 +1,79 @@
+WoundCorder codebase and integration review
+Reviewed: October 12, 2026
+
+Scope
+Reviewed the current working tree, including the existing staged measurement changes and the new workflow changes. Covered launch/consent, patient identity/intake, body-map navigation, camera/photo selection, CNN preprocessing and output contract, local model download/inference, results/education, saving/sharing, AR measurement/frame consistency, branding/resources, and Debug/Release packaging. This is a source/integration review with automated checks, not a clinical validation or an exhaustive device/UI certification.
+
+Release findings / remaining work
+1. Physical-device validation remains outstanding. The paired iPad was unavailable. Real LiDAR boundary/volume accuracy, camera interruptions, Qwen3.5 GGUF/MNN generation, peak memory, thermal behavior, and Mail delivery require device acceptance testing. RAM eligibility is not a guarantee of successful generation.
+2. The bundled segmentation asset is a placeholder. Automatic outlines use the existing RGB/depth fallback; numerical checks and confidence safeguards do not establish clinical boundary accuracy. Labeled captures and clinical validation remain necessary. CNN smoke tests establish the output contract, not diagnostic accuracy.
+3. Public examples are now bundled in all configurations following the owner's explicit confirmation that all supplied images are cleared. See ReferenceData/DistributionApproval.txt. Eighteen selected images retain source attribution and watermarks. They have no app file-browser exposure, but displayed/bundled images cannot be made extraction-proof. Source labels were not independently clinically adjudicated.
+4. Full VoiceOver, large text, every body-map location/device size, and formal sixth-grade usability acceptance remain outstanding. App Store metadata is prepared locally, not published.
+
+Current refinement pass
+- Migrated patient and measurement indexes from legacy defaults to atomic, protected files. Migration retains a protected original and removes defaults only after verified replacement. Corrupt data blocks writes; explicit reload/recovery preserves the current file. Stale writers cannot silently overwrite newer records. Save failures remain visible and do not dismiss the form or claim success.
+- Removed name-based legacy patient matching. Old records remain accessible without silently attaching to a different person with the same name.
+- Archived the unused legacy volume calculator and camera prototypes outside the app target; removed the obsolete explicit camera build reference. Compatibility screens route through current consent/intake or saved history.
+- Separated ordinary photo capture from AR measurement. Photo capture uses AVCaptureSession without mesh scanning or automatic Photos-library writes. Camera denial still allows photo selection.
+- Scoped scanner notifications to each capture instance; hidden/stale screens cannot control another scanner. Interrupted manual/guided/volume scans cancel pending work and cannot appear finalized.
+- Rejected missing/low/invalid depth confidence and nonfinite/out-of-range depth. Interpolated holes are not treated as observed geometry.
+- Validated mask dimensions/strides, finite probabilities, and explicit logit contracts; rejected ambiguous multiclass outputs. Stabilized semantic probabilities/embeddings against numeric overflow. Required a valid background probability before photo acceptance.
+- Corrected image orientation/mirroring and resized directly into the model input without an unnecessary full-resolution allocation.
+- Preserved measurement source, quality, preliminary status, and units with saved records, result cards, and analysis sharing. Legacy records clearly state when quality/source were not recorded.
+- Added stale-index and corruption guards to photo-check saving/deletion.
+
+Issues corrected during this review
+- Connected two exact-source-label reference photos per class from the ZIP; kept provenance/checksums; owner-approved examples now ship in Debug and Release.
+- Photo-result Save previously discarded analysis and made zero-valued measurement entries. It now persists photo, predictions, tissue outputs, comments, role, demographics/intake, and optional real measurements in a separate store; saved results reopen and can be shared.
+- New patients sharing a name no longer merge automatically. Only an explicit record identifier can merge new intake identities.
+- MNN input lacked its image placeholder and used the wrong shape/channel/range. It now uses <img>wound</img> and HWC BGR bytes, as required by MNN's vision preprocessing, with free-memory checking, exception handling, and weight release after inference.
+  Reference: https://raw.githubusercontent.com/alibaba/MNN/3.5.0/transformers/llm/engine/src/omni.cpp
+  Template behavior: https://raw.githubusercontent.com/alibaba/MNN/3.5.0/transformers/llm/engine/src/llm.cpp
+- Image resizing normalizes orientation even when an image is already below the size limit.
+- VLM comments must parse as bounded structured data and use only the supplied two CNN candidate labels. Invalid output retains the CNN result. Native cards replace raw HTML/JSON output; camera summary text also avoids raw JSON.
+- Non-finite CNN outputs are rejected; background/non-skin photos prompt a retake instead of displaying wound labels.
+- Fixed a stale download-verification callback that could interfere with a later download attempt.
+- Added a full-window privacy cover for app-switcher snapshots, including presented screens.
+- Replaced measurement-derived clinical urgency labels with explicitly nonclinical size-index groups. Size alone cannot establish urgency.
+- Corrected optional demographic defaults, field units, validation, consent tap targets, and accessibility hiding of the unconsented main screen.
+- Removed unconditional simulator linkage of the device-only MNN framework and dead Markdown/HTML presentation code. Updated obsolete backend documentation.
+
+Original request coverage
+- WoundCorder branding, historical logo/app icons, AI Wound Tracking & Analysis subtitle metadata: implemented locally; App Store metadata is not published.
+- Versioned one-time explicit opt-in, then local-model setup: implemented. Consent starts unchecked. CNN is available without a model download. Unsupported context mode is disabled.
+- Default Qwen3.5-4B Q4_K_S with pinned weights/projector hashes; alternative Qwen3-VL MNN: implemented. Download/storage agreement is explicit. Large model weights were not downloaded for this review.
+- Patient and professional modes, role-specific naming/education/colors: implemented. Existing storage keys retaining WoundScope names are compatibility details, not user-facing branding.
+- Required name; optional age, gender, height, weight; six duration ranges plus unknown; 13 tri-state health entries defaulting unknown; body map; no patient skin-tone question: implemented.
+- Age/BMI when available and comorbidity/location/duration context supplied to local VLM; no name or record ID in inference prompt: implemented.
+- CNN top one at >=50%, otherwise two; combined output two: implemented. Inadequate photos abstain and VLM failure is explicitly CNN-only.
+- Supplied patient/professional wound information: adapted into native cards. The professional document has no separate tissue glossary; shared tissue explanations and its TIME/TIMERS review are used. Normal-control and surgical-wound descriptions are documented additions for classes absent from the supplied wound descriptions.
+- Explicit four-level email share to info@woundcorder.ai: implemented with preview, fresh consent on selection changes, metadata-stripped photo, and user-controlled Mail Send. No email was sent during this work.
+
+Validation evidence
+- All 1030 ZIP checksums passed; packaged Core ML model matched the app model byte-for-byte.
+- 18 selected image hashes passed; exactly two examples per each of nine labels; all labels covered by education data.
+- 294 geometry/consensus/frame-freshness regression checks passed.
+- Analysis-context tests passed: units, prompt inclusion, missing/invalid inputs, snapshot round trip.
+- Workflow-policy tests passed: candidate-count thresholds, BMI, unknown checklist defaults.
+- Structured-comment tests passed: valid JSON/code fence, constrained/distinct labels, malformed data rejection, readable shared text.
+- Actual Core ML CPU inference passed: 9 class logits, 8 semantic logits, 1280-dimensional unit-normalized embedding; finite outputs.
+- Simulator integration fixture passed: photo save/reload/delete, preservation of comments/profile/intake, absent measurement stays absent, image reload, four share disclosure boundaries, result counts, bundled education/reference resources. Fixture uses temporary generated data and is compiled out of Release.
+- Protected-record tests pass for migration, corrupt-data preservation, explicit recovery, stale writers, and independent indexes.
+- Sensor/mask tests pass for confidence/range rejection, noncontiguous strides, logits/probability contracts, invalid masks, and scan-event isolation.
+- Stable semantic math checks pass, including extreme finite inputs and invalid input rejection.
+- Simulator checks pass for actual patient/measurement stores, same-name separation, failed saves/recovery, and rotated/mirrored image pixels.
+- Production CNN inference through the app pipeline passed on nine bundled images (one per class); this checks finite outputs and dimensions, not clinical accuracy.
+- Final Debug simulator and unsigned Release iOS builds passed. Both packages contain 18 reference JPGs and their manifest. The device app contains the CNN and llama runtime. The only final build warning is optional App Intents metadata extraction (no AppIntents dependency).
+- git diff --check passed.
+
+Reproducing the simulator storage/share checks
+Build Debug, install the app in Simulator, and launch com.woundcorder.app with --review-results. The developer-only fixture reports PASS on-screen and in console, and deletes its temporary test records. Normal launch without the argument opens the real consent/app flow. The fixture is absent from Release.
+
+October 13 build-sandbox correction
+Declared all 18 reference JPGs and the JSON manifest as individual build-script outputs. The previous folder-only declaration could deny file creation under Xcode script sandboxing. A fresh Debug simulator build with ENABLE_USER_SCRIPT_SANDBOXING=YES passed; all 19 bundled files matched their source hashes. Sandboxing remains enabled.
+
+October 13 score removal and optional measurement
+Removed severity/size-index calculation, badges, score-based colors, dashboard groups, and text/CSV exports. Only the optional legacy record field remains for backward-compatible decoding; new measurements do not receive a score. Intake review and the active scanner now offer Skip measurement · AI analysis. Skipping passes no measurement context; finalized captures can still continue with their actual measurements. Debug simulator build and all seven review-check suites passed. Interactive camera/AR interruption acceptance remains a device check.
+
+October 13 archive framework sandbox correction
+Declared the embedded llama binary, Info.plist, and code-signature outputs individually rather than only the framework folder. An unsigned Release archive with ENABLE_USER_SCRIPT_SANDBOXING=YES succeeded, including the archive-specific InstallationBuildProductsLocation copy. Both framework files were verified present. Distribution signing was not exercised.

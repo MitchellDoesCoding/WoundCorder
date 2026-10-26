@@ -345,10 +345,10 @@ final class WoundMultimodalSegmenter {
         for outputName in model.modelDescription.outputDescriptionsByName.keys {
             guard let value = output.featureValue(for: outputName) else { continue }
             if value.type == .image, let buffer = value.imageBufferValue {
-                return maskGrid(from: buffer, width: targetWidth, height: targetHeight)
+                return maskGrid(from: buffer, width: targetWidth, height: targetHeight, logits: outputName.localizedCaseInsensitiveContains("logit"))
             }
             if value.type == .multiArray, let array = value.multiArrayValue {
-                return maskGrid(from: array, width: targetWidth, height: targetHeight)
+                return maskGrid(from: array, width: targetWidth, height: targetHeight, logits: outputName.localizedCaseInsensitiveContains("logit"))
             }
         }
 
@@ -522,24 +522,16 @@ final class WoundMultimodalSegmenter {
 
         var confidenceBase: UnsafeMutableRawPointer?
         var confidenceBytesPerRow = 0
-        var confidenceMax: UInt8 = 0
         if let confidenceMap,
            CVPixelBufferGetWidth(confidenceMap) == depthWidth,
            CVPixelBufferGetHeight(confidenceMap) == depthHeight {
             CVPixelBufferLockBaseAddress(confidenceMap, .readOnly)
             confidenceBase = CVPixelBufferGetBaseAddress(confidenceMap)
             confidenceBytesPerRow = CVPixelBufferGetBytesPerRow(confidenceMap)
-            if let confidenceBase {
-                for y in stride(from: 0, to: depthHeight, by: max(1, depthHeight / 24)) {
-                    let row = confidenceBase.advanced(by: y * confidenceBytesPerRow)
-                    for x in stride(from: 0, to: depthWidth, by: max(1, depthWidth / 24)) {
-                        confidenceMax = max(confidenceMax, row.load(fromByteOffset: x, as: UInt8.self))
-                    }
-                }
-            }
+
         }
         defer {
-            if let confidenceMap, confidenceBase != nil {
+            if let confidenceMap, CVPixelBufferGetWidth(confidenceMap) == depthWidth, CVPixelBufferGetHeight(confidenceMap) == depthHeight {
                 CVPixelBufferUnlockBaseAddress(confidenceMap, .readOnly)
             }
         }
@@ -561,26 +553,20 @@ final class WoundMultimodalSegmenter {
                 let index = y * width + x
                 let depthM = depthRow.load(fromByteOffset: sourceX * MemoryLayout<Float>.size, as: Float.self)
 
-                var confidenceValue: UInt8 = confidenceMax > 0 ? confidenceMax : 255
+                var confidenceValue: UInt8?
                 if let confidenceBase {
                     let confidenceRow = confidenceBase.advanced(by: sourceY * confidenceBytesPerRow)
                     confidenceValue = confidenceRow.load(fromByteOffset: sourceX, as: UInt8.self)
                 }
 
-                let isHigh = isDepthConfidenceUsable(confidenceValue, maximumSeen: confidenceMax)
-                confidenceSum += normalizedConfidence(confidenceValue, maximumSeen: confidenceMax)
-
-                if depthM.isFinite, depthM > 0.02, depthM < 5.0, isHigh {
+                confidenceSum += WoundDepthValidation.normalizedConfidence(confidenceValue)
+                if WoundDepthValidation.isUsable(depth: depthM, confidence: confidenceValue) {
                     depthValues[index] = depthM
                     hasDepth[index] = true
-                    highConfidence[index] = true
-                    validDepths.append(depthM)
-                } else if depthM.isFinite, depthM > 0.02, depthM < 5.0 {
-                    depthValues[index] = depthM
-                    hasDepth[index] = true
-                    highConfidence[index] = false
+                    highConfidence[index] = confidenceValue == 2
                     validDepths.append(depthM)
                 }
+
             }
         }
 
@@ -888,18 +874,8 @@ final class WoundMultimodalSegmenter {
 
                 let borderPenalty: Float = (nx < 0.025 || nx > 0.975 || ny < 0.025 || ny > 0.975) ? 0.18 : 0
                 let colorCue = max(tissueCue, 0.70 * skinContrast + 0.30 * localContrast)
-                let colorSupport = clamp((colorCue - 0.08) / 0.52, 0, 1)
-                let supportedDepth = depthCue * colorSupport
-                let agreement = sqrt(max(0, colorCue * depthCue))
-                var score = 0.58 * colorCue
-                    + 0.18 * localContrast
-                    + 0.13 * supportedDepth
-                    + 0.07 * agreement
-                    + 0.04 * centerWeight
-                    - borderPenalty
-                if !depthGrid.hasDepth[index] {
-                    score *= 0.82
-                }
+                let score = WoundAppearancePolicy.score(color: colorCue, contrast: localContrast,
+                    depth: depthCue, center: centerWeight, borderPenalty: borderPenalty)
                 scores[index] = clamp(score, 0, 1)
             }
         }
@@ -2000,7 +1976,7 @@ final class WoundMultimodalSegmenter {
         return clamp(raw, 0, source == .heuristic ? 0.74 : 0.96)
     }
 
-    private func maskGrid(from pixelBuffer: CVPixelBuffer, width: Int, height: Int) -> MaskGrid? {
+    private func maskGrid(from pixelBuffer: CVPixelBuffer, width: Int, height: Int, logits: Bool) -> MaskGrid? {
         let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
         let sourceWidth = CVPixelBufferGetWidth(pixelBuffer)
         let sourceHeight = CVPixelBufferGetHeight(pixelBuffer)
@@ -2035,7 +2011,7 @@ final class WoundMultimodalSegmenter {
                 for x in 0..<width {
                     let sx = min(sourceWidth - 1, Int((Float(x) + 0.5) / Float(width) * Float(sourceWidth)))
                     let raw = row.load(fromByteOffset: sx * MemoryLayout<Float>.size, as: Float.self)
-                    let prob = raw < 0 || raw > 1 ? sigmoid(raw) : raw
+                    guard let prob = WoundMaskDecoder.probability(raw, logits: logits) else { return nil }
                     values[y * width + x] = UInt8(clamp(prob * 255.0, 0, 255))
                 }
             }
@@ -2054,22 +2030,9 @@ final class WoundMultimodalSegmenter {
         return MaskGrid(width: width, height: height, values: values)
     }
 
-    private func maskGrid(from array: MLMultiArray, width: Int, height: Int) -> MaskGrid? {
-        guard array.count > 0 else { return nil }
-        let shape = array.shape.map { $0.intValue }
-        let outHeight = shape.count >= 2 ? shape[shape.count - 2] : height
-        let outWidth = shape.count >= 1 ? shape[shape.count - 1] : width
-        guard outWidth > 0, outHeight > 0 else { return nil }
-
-        var sourceValues = [Float](repeating: 0, count: outWidth * outHeight)
-        for y in 0..<outHeight {
-            for x in 0..<outWidth {
-                let rawIndex = y * outWidth + x
-                let value = arrayValue(array, flatIndex: rawIndex)
-                sourceValues[rawIndex] = value < 0 || value > 1 ? sigmoid(value) : value
-            }
-        }
-
+    private func maskGrid(from array: MLMultiArray, width: Int, height: Int, logits: Bool) -> MaskGrid? {
+        guard let decoded = WoundMaskDecoder.probabilities(array, logits: logits) else { return nil }
+        let outWidth = decoded.width, outHeight = decoded.height, sourceValues = decoded.values
         var values = [UInt8](repeating: 0, count: width * height)
         for y in 0..<height {
             let sy = min(outHeight - 1, Int((Float(y) + 0.5) / Float(height) * Float(outHeight)))
@@ -2080,24 +2043,6 @@ final class WoundMultimodalSegmenter {
         }
 
         return MaskGrid(width: width, height: height, values: values)
-    }
-
-    private func arrayValue(_ array: MLMultiArray, flatIndex: Int) -> Float {
-        switch array.dataType {
-        case .float32:
-            let pointer = array.dataPointer.bindMemory(to: Float.self, capacity: array.count)
-            return pointer[min(flatIndex, array.count - 1)]
-        case .double:
-            let pointer = array.dataPointer.bindMemory(to: Double.self, capacity: array.count)
-            return Float(pointer[min(flatIndex, array.count - 1)])
-        case .float16:
-            return array[min(flatIndex, array.count - 1)].floatValue
-        case .int32:
-            let pointer = array.dataPointer.bindMemory(to: Int32.self, capacity: array.count)
-            return Float(pointer[min(flatIndex, array.count - 1)])
-        default:
-            return array[min(flatIndex, array.count - 1)].floatValue
-        }
     }
 
     private func makeMaskPixelBuffer(
@@ -2264,21 +2209,6 @@ final class WoundMultimodalSegmenter {
             }
         }
         return output
-    }
-
-    private func isDepthConfidenceUsable(_ value: UInt8, maximumSeen: UInt8) -> Bool {
-        if maximumSeen <= 2 {
-            return value >= 1
-        }
-        return value >= 128
-    }
-
-    private func normalizedConfidence(_ value: UInt8, maximumSeen: UInt8) -> Float {
-        if maximumSeen == 0 { return 1 }
-        if maximumSeen <= 2 {
-            return Float(value) / 2.0
-        }
-        return Float(value) / 255.0
     }
 
     private func perimeter(points: [SIMD3<Float>]) -> Float {

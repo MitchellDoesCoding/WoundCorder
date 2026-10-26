@@ -7,29 +7,56 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AABBCCDDEEFF112233445588 /* llama.framework in Embed llama runtime */ = {isa = PBXBuildFile; fileRef = AABBCCDDEEFF112233445599 /* llama.framework */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		AABBCCDDEEFF112233445600 /* llama.dSYM in Archive llama symbols */ = {isa = PBXBuildFile; fileRef = AABBCCDDEEFF112233445601 /* llama.dSYM */; platformFilter = ios; };
 		AE2C81C52739620A001BDCC7 /* MetalTextureViewDepth.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE7889B0271F02D800B0383F /* MetalTextureViewDepth.swift */; };
 		AE2C81C62739620E001BDCC7 /* MetalTextureViewColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC88718272EA8E600ED6FCC /* MetalTextureViewColor.swift */; };
 		AE921D2A270D7B02000E95C6 /* LiDARDepthApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE921D29270D7B02000E95C6 /* LiDARDepthApp.swift */; };
 		AE921D2E270D7B04000E95C6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AE921D2D270D7B04000E95C6 /* Assets.xcassets */; };
 		AE921D31270D7B04000E95C6 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AE921D30270D7B04000E95C6 /* Preview Assets.xcassets */; };
 		AE9AD789270ECC86001218B2 /* shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = AE9AD788270ECC86001218B2 /* shaders.metal */; };
-		AE9AD78D270ECD01001218B2 /* CameraController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE9AD78C270ECD01001218B2 /* CameraController.swift */; };
 		F805E9732D473D1200A93B14 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = F805E9722D473D1200A93B14 /* ZIPFoundation */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		AABBCCDDEEFF112233445566 /* Embed llama runtime */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				AABBCCDDEEFF112233445588 /* llama.framework in Embed llama runtime */,
+			);
+			name = "Embed llama runtime";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AABBCCDDEEFF112233445602 /* Archive llama symbols */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 16;
+			files = (
+				AABBCCDDEEFF112233445600 /* llama.dSYM in Archive llama symbols */,
+			);
+			name = "Archive llama symbols";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0C34ECABC9005D93C0DF4297 /* LICENSE.txt */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = LICENSE.txt; sourceTree = "<group>"; };
 		9ED80CBFEB14F0F0F5121BC6 /* SampleCode.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = SampleCode.xcconfig; path = Configuration/SampleCode.xcconfig; sourceTree = "<group>"; };
+		AABBCCDDEEFF112233445599 /* llama.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = llama.framework; path = Vendor/llama.framework; sourceTree = SOURCE_ROOT; };
+		AABBCCDDEEFF112233445601 /* llama.dSYM */ = {isa = PBXFileReference; lastKnownFileType = wrapper.dsym; name = llama.dSYM; path = Vendor/llama.dSYM; sourceTree = SOURCE_ROOT; };
 		AE18F046274A126C008BC9E3 /* AVFCapture.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = AVFCapture.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AE18F048274A1272008BC9E3 /* CMCapture.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = CMCapture.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AE7889AD271DB86E00B0383F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		AE7889B0271F02D800B0383F /* MetalTextureViewDepth.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MetalTextureViewDepth.swift; sourceTree = "<group>"; };
-		AE921D26270D7B02000E95C6 /* WoundScope.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WoundScope.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AE921D26270D7B02000E95C6 /* WoundCorder.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WoundCorder.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AE921D29270D7B02000E95C6 /* LiDARDepthApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiDARDepthApp.swift; sourceTree = "<group>"; };
 		AE921D2D270D7B04000E95C6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AE921D30270D7B04000E95C6 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		AE9AD788270ECC86001218B2 /* shaders.metal */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.metal; path = shaders.metal; sourceTree = "<group>"; };
-		AE9AD78C270ECD01001218B2 /* CameraController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraController.swift; sourceTree = "<group>"; };
 		AEA6FCEF272AED0C002947D4 /* AppleDepth.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = AppleDepth.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AEC88718272EA8E600ED6FCC /* MetalTextureViewColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalTextureViewColor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -55,6 +82,8 @@
 		AE921D1D270D7B02000E95C6 = {
 			isa = PBXGroup;
 			children = (
+				AABBCCDDEEFF112233445599 /* llama.framework */,
+				AABBCCDDEEFF112233445601 /* llama.dSYM */,
 				AE921D28270D7B02000E95C6 /* LiDARDepth */,
 				AE921D27270D7B02000E95C6 /* Products */,
 				AEA6FCEE272AED0C002947D4 /* Frameworks */,
@@ -66,7 +95,7 @@
 		AE921D27270D7B02000E95C6 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				AE921D26270D7B02000E95C6 /* WoundScope.app */,
+				AE921D26270D7B02000E95C6 /* WoundCorder.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -74,7 +103,6 @@
 		AE921D28270D7B02000E95C6 /* LiDARDepth */ = {
 			isa = PBXGroup;
 			children = (
-				AE9AD78C270ECD01001218B2 /* CameraController.swift */,
 				C444DFC327C43447000D8883 /* Model */,
 				F812FA012D0D266D007C3AF8 /* New Group */,
 				AE921D29270D7B02000E95C6 /* LiDARDepthApp.swift */,
@@ -175,10 +203,13 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		AE921D25270D7B02000E95C6 /* LiDARDepth */ = {
+		AE921D25270D7B02000E95C6 /* WoundCorder */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = AE921D34270D7B04000E95C6 /* Build configuration list for PBXNativeTarget "LiDARDepth" */;
+			buildConfigurationList = AE921D34270D7B04000E95C6 /* Build configuration list for PBXNativeTarget "WoundCorder" */;
 			buildPhases = (
+				AABBCCDDEEFF112233445577 /* Bundled wound examples */,
+				AABBCCDDEEFF112233445566 /* Embed llama runtime */,
+				AABBCCDDEEFF112233445602 /* Archive llama symbols */,
 				AE921D22270D7B02000E95C6 /* Sources */,
 				AE921D23270D7B02000E95C6 /* Frameworks */,
 				AE921D24270D7B02000E95C6 /* Resources */,
@@ -192,9 +223,9 @@
 				F812FA192D0E0A16007C3AF8 /* Codes */,
 				F812FA1C2D0E2C2C007C3AF8 /* Metal */,
 			);
-			name = LiDARDepth;
-			productName = DepthAPISample;
-			productReference = AE921D26270D7B02000E95C6 /* WoundScope.app */;
+			name = WoundCorder;
+			productName = WoundCorder;
+			productReference = AE921D26270D7B02000E95C6 /* WoundCorder.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -220,6 +251,8 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				es,
+				fr,
 				Base,
 			);
 			mainGroup = AE921D1D270D7B02000E95C6;
@@ -230,7 +263,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				AE921D25270D7B02000E95C6 /* LiDARDepth */,
+				AE921D25270D7B02000E95C6 /* WoundCorder */,
 			);
 		};
 /* End PBXProject section */
@@ -247,12 +280,66 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		AABBCCDDEEFF112233445577 /* Bundled wound examples */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_000004.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_006648.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_005037.jpg",
+				"$(PROJECT_DIR)/ReferenceData/wound-reference-photos.json",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_006477.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_005032.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_000003.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_007522.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_007296.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_006995.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_007503.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_007298.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_006586.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_006585.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_006877.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_007002.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_006484.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_006874.jpg",
+				"$(PROJECT_DIR)/ReferenceData/reference-MT_006646.jpg",
+			);
+			name = "Bundled wound examples";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_000003.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_000004.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_005032.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_005037.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_006477.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_006484.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_006585.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_006586.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_006646.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_006648.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_006874.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_006877.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_006995.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_007002.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_007296.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_007298.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_007503.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/reference-MT_007522.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WoundReferenceExamples/wound-reference-photos.json",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_000003.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_000004.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_005032.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_005037.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_006477.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_006484.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_006585.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_006586.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_006646.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_006648.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_006874.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_006877.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_006995.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_007002.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_007296.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_007298.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_007503.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/reference-MT_007522.jpg\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n  /bin/cp \"$PROJECT_DIR/ReferenceData/wound-reference-photos.json\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/WoundReferenceExamples/\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		AE921D22270D7B02000E95C6 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AE9AD78D270ECD01001218B2 /* CameraController.swift in Sources */,
 				AE9AD789270ECC86001218B2 /* shaders.metal in Sources */,
 				AE2C81C62739620E001BDCC7 /* MetalTextureViewColor.swift in Sources */,
 				AE2C81C52739620A001BDCC7 /* MetalTextureViewDepth.swift in Sources */,
@@ -391,9 +478,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = LiDARDepth/WoundCorder.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_ASSET_PATHS = "\"LiDARDepth/Preview Content\"";
 				DEVELOPMENT_TEAM = Y5L935RVSV;
 				ENABLE_PREVIEWS = YES;
@@ -404,12 +492,12 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = LiDARDepth/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = WoundScope;
-				INFOPLIST_KEY_NSCameraUsageDescription = "WoundScope uses the camera and depth sensors to scan and measure visible wounds.";
+				INFOPLIST_KEY_CFBundleDisplayName = WoundCorder;
+				INFOPLIST_KEY_NSCameraUsageDescription = "WoundCorder uses the camera and depth sensors to scan and measure visible wounds.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Location can optionally add context to wound measurements.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "WoundScope uses the microphone only when you record an optional voice note.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "WoundScope can save wound scan snapshots and 3D exports to your photo library.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "WoundScope uses photo access when you upload wound images, prescriptions, or notes.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "WoundCorder uses the microphone only when you record an optional voice note.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "WoundCorder can save wound scan snapshots and 3D exports to your photo library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "WoundCorder uses photo access when you upload wound images, prescriptions, or notes.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -424,14 +512,17 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
+				MARKETING_VERSION = 2.0.3;
+				OTHER_LDFLAGS = "$(inherited)";
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
 					"$(inherited)",
 					"-framework",
 					MNN,
+					"-framework",
+					llama,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.woundcorder.app;
-				PRODUCT_NAME = WoundScope;
+				PRODUCT_NAME = WoundCorder;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_INSTALL_OBJC_HEADER = NO;
@@ -448,9 +539,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = LiDARDepth/WoundCorder.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_ASSET_PATHS = "\"LiDARDepth/Preview Content\"";
 				DEVELOPMENT_TEAM = Y5L935RVSV;
 				ENABLE_PREVIEWS = YES;
@@ -461,12 +553,12 @@
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = LiDARDepth/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = WoundScope;
-				INFOPLIST_KEY_NSCameraUsageDescription = "WoundScope uses the camera and depth sensors to scan and measure visible wounds.";
+				INFOPLIST_KEY_CFBundleDisplayName = WoundCorder;
+				INFOPLIST_KEY_NSCameraUsageDescription = "WoundCorder uses the camera and depth sensors to scan and measure visible wounds.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Location can optionally add context to wound measurements.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "WoundScope uses the microphone only when you record an optional voice note.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "WoundScope can save wound scan snapshots and 3D exports to your photo library.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "WoundScope uses photo access when you upload wound images, prescriptions, or notes.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "WoundCorder uses the microphone only when you record an optional voice note.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "WoundCorder can save wound scan snapshots and 3D exports to your photo library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "WoundCorder uses photo access when you upload wound images, prescriptions, or notes.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -481,14 +573,17 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
+				MARKETING_VERSION = 2.0.3;
+				OTHER_LDFLAGS = "$(inherited)";
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = (
 					"$(inherited)",
 					"-framework",
 					MNN,
+					"-framework",
+					llama,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.woundcorder.app;
-				PRODUCT_NAME = WoundScope;
+				PRODUCT_NAME = WoundCorder;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_INSTALL_OBJC_HEADER = NO;
@@ -510,7 +605,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		AE921D34270D7B04000E95C6 /* Build configuration list for PBXNativeTarget "LiDARDepth" */ = {
+		AE921D34270D7B04000E95C6 /* Build configuration list for PBXNativeTarget "WoundCorder" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AE921D35270D7B04000E95C6 /* Debug */,
